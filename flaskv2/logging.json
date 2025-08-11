@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+
+  "formatters": {
+    "human": {
+      "format": "%(asctime)s %(levelname)s [%(name)s] user=%(user)s actor_id=%(actor_id)s ip=%(ip)s %(method)s %(path)s (%(endpoint)s) - %(message)s",
+      "datefmt": "%Y-%m-%dT%H:%M:%S%z"
+    },
+    "json": {
+      "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+      "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s %(user)s %(actor_id)s %(ip)s %(method)s %(path)s %(endpoint)s"
+    },
+    "json_exc": {
+      "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+      "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s %(user)s %(actor_id)s %(ip)s %(method)s %(path)s %(endpoint)s %(exc_info)s"
+    }
+  },
+
+  "filters": {
+    "request_context": { "()": "flaskv2.logging_setup.RequestContextFilter" },
+    "strip_ansi":      { "()": "flaskv2.logging_setup.StripAnsiFilter" },
+    "drop_noise":      { "()": "flaskv2.logging_setup.DropPathFilter" },
+    "redact_secrets":  { "()": "flaskv2.logging_setup.RedactSecretsFilter" }
+  },
+
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "INFO",
+      "formatter": "human",
+      "filters": ["request_context", "strip_ansi"]
+    },
+
+    "app_file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "INFO",
+      "formatter": "json",
+      "filters": ["request_context", "redact_secrets", "strip_ansi", "drop_noise"],
+      "filename": "app.log",
+      "encoding": "utf-8",
+      "maxBytes": 1048576,
+      "backupCount": 5
+    },
+
+    "audit_file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "INFO",
+      "formatter": "json",
+      "filters": ["request_context", "redact_secrets", "strip_ansi", "drop_noise"],
+      "filename": "audit.log",
+      "encoding": "utf-8",
+      "maxBytes": 1048576,
+      "backupCount": 10
+    },
+
+    "errors_file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "ERROR",
+      "formatter": "json_exc",
+      "filters": ["request_context", "redact_secrets", "strip_ansi"],
+      "filename": "errors.log",
+      "encoding": "utf-8",
+      "maxBytes": 2097152,
+      "backupCount": 10
+    }
+  },
+
+  "loggers": {
+    "app": {
+      "level": "INFO",
+      "handlers": ["console", "app_file", "errors_file"],
+      "propagate": false
+    },
+    "audit": {
+      "level": "INFO",
+      "handlers": ["audit_file"],
+      "propagate": false
+    },
+    "werkzeug": {
+      "level": "WARNING",
+      "handlers": ["console", "errors_file"],
+      "propagate": false
+    },
+    "sqlalchemy.engine": {
+      "level": "WARNING",
+      "handlers": ["console"],
+      "propagate": false
+    }
+  },
+
+  "root": {
+    "level": "WARNING",
+    "handlers": ["console", "errors_file"]
+  }
+}
