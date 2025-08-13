@@ -18,7 +18,7 @@ class BaseConfig:
     # --- Core ---
     SECRET_KEY                      = os.getenv("SECRET_KEY")
     SQLALCHEMY_DATABASE_URI         = os.getenv("SQLALCHEMY_DATABASE_URI")
-    SQLALCHEMY_TRACK_MODIFICATIONS  = env_bool(os.getenv("SQLALCHEMY_TRACK_MODIFICATIONS"), False)
+    SQLALCHEMY_TRACK_MODIFICATIONS  = env_bool("SQLALCHEMY_TRACK_MODIFICATIONS", False)
     PERMANENT_SESSION_LIFETIME      = timedelta(hours=3)
 
     # --- Mail ---
