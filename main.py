@@ -27,8 +27,8 @@ def run():
         app.run(
             host=host,
             port=port,
-            debug=(envnum == 1),
-            use_reloader=(envnum == 1),
+            debug=(envnum in [1, 2]),
+            use_reloader=(envnum in [1, 2]),
         )
 
 
