@@ -6,7 +6,7 @@ SECRET_MAP = {
 }
 
 def load_env():
-    envnum = int(os.getenv("ENVNUM", "1"))
+    envnum = int(os.getenv("ENVNUM", "2"))
 
     # --- Heavy work only once per process tree ---
     if os.environ.get("L2A_ENV_BOOTSTRAPPED") != "1":
@@ -19,8 +19,9 @@ def load_env():
             # Staging/Prod: fetch AWS secrets once (parent); child inherits the env
             import boto3
             from botocore.exceptions import ClientError
-            secret_id = SECRET_MAP.get(envnum) or \
-                (_ for _ in ()).throw(RuntimeError(f"Unsupported ENVNUM={envnum}"))
+            secret_id = SECRET_MAP.get(envnum)
+            if secret_id is None:
+                raise RuntimeError(f"Unsupported ENVNUM={envnum}")
             region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1"
             sm = boto3.client("secretsmanager", region_name=region)
             try:
