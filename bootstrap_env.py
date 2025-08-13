@@ -21,7 +21,7 @@ def load_env():
             from botocore.exceptions import ClientError
             secret_id = SECRET_MAP.get(envnum) or \
                 (_ for _ in ()).throw(RuntimeError(f"Unsupported ENVNUM={envnum}"))
-            region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "ap-southeast-1"
+            region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1"
             sm = boto3.client("secretsmanager", region_name=region)
             try:
                 resp = sm.get_secret_value(SecretId=secret_id)
