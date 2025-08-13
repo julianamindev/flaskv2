@@ -23,9 +23,9 @@ class BaseConfig:
 
     # --- Mail ---
     MAIL_SERVER             = os.getenv("MAIL_SERVER")
-    MAIL_PORT               = env_int(os.getenv("MAIL_PORT"), 587)
-    MAIL_USE_TLS            = env_bool(os.getenv("MAIL_USE_TLS"), True)
-    MAIL_USE_SSL            = env_bool(os.getenv("MAIL_USE_SSL"), False)
+    MAIL_PORT               = env_int("MAIL_PORT", 587)
+    MAIL_USE_TLS            = env_bool("MAIL_USE_TLS", True)
+    MAIL_USE_SSL            = env_bool("MAIL_USE_SSL", False)
     MAIL_USERNAME           = os.getenv("MAIL_USERNAME")
     MAIL_PASSWORD           = os.getenv("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER     = os.getenv("MAIL_DEFAULT_SENDER") or MAIL_USERNAME
