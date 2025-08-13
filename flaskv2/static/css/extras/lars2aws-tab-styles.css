@@ -1,0 +1,7 @@
+/* Give the active tab a primary background + white text */
+.tabs-accent {
+--bs-nav-tabs-link-active-bg: var(--bs-dark);
+--bs-nav-tabs-link-active-color: #fff;
+--bs-nav-tabs-link-active-border-color: var(--bs-dark);
+}
+.nav-tabs .nav-link { transition: background-color .15s ease, color .15s ease; }

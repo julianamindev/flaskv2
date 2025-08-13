@@ -1,7 +1,7 @@
 import logging
 import secrets
 import string
-
+import time
 from datetime import datetime, timezone
 
 from markupsafe import Markup
@@ -14,15 +14,14 @@ from flask_mail import Message
 from flaskv2.models import User
 from flaskv2.users.forms import ForgotPasswordForm, LoginForm, RegistrationForm, ResetPasswordForm
 from flaskv2.utils.db import safe_commit
+from flaskv2.utils.timing import add_duration
 
 # ---- audit helper (JSON to audit.log) ---------------------------------------
-
 def audit(action: str, **fields):
-    actor_id = getattr(current_user, "id", None)
-    actor    = getattr(current_user, "username", None)
-    current_app.audit.info(action, extra={"actor_id": actor_id, "actor": actor, **fields})
-
+    """Standardize audit events. 'action' is the log message; fields go to JSON."""
+    current_app.audit.info(action, extra=fields)
 # -----------------------------------------------------------------------------
+
 
 users = Blueprint('users', __name__)
 
@@ -30,10 +29,11 @@ users = Blueprint('users', __name__)
 @login_required
 def register():
     current_app.app_log.info("view_register")
+
     if not current_user.is_admin:
         audit("register_denied", outcome="denied", reason="not_admin")
         return redirect(url_for('main.home'))
-    
+
     form = RegistrationForm()
     if form.validate_on_submit():
         # generate temporary password (DO NOT log it)
@@ -60,7 +60,6 @@ def register():
         link = url_for('users.reset_password', token=token, _external=True)
 
         sender = current_app.config.get("MAIL_DEFAULT_SENDER") or current_app.config.get("MAIL_USERNAME")
-        print(f"sender: {sender}")
 
         msg = Message("Set up your account password", recipients=[user.email], sender=sender)
         msg.body = f"""Hello {user.username},
@@ -71,31 +70,31 @@ Please go to the following link to set your own password:
 {link}
 
 This link will expire in 1 hour.
-"""     
-        # log what we're about to send
+"""
+
         audit(
             "register_mail_prepare",
-            extra={
-                "from": sender,
-                "to": user.email,
-                "server": current_app.config.get("MAIL_SERVER"),
-                "port": current_app.config.get("MAIL_PORT"),
-                "use_tls": current_app.config.get("MAIL_USE_TLS"),
-                "use_ssl": current_app.config.get("MAIL_USE_SSL"),
-            },
+            from_addr=sender,
+            to_addr=user.email,
+            server=current_app.config.get("MAIL_SERVER"),
+            port=current_app.config.get("MAIL_PORT"),
+            use_tls=current_app.config.get("MAIL_USE_TLS"),
+            use_ssl=current_app.config.get("MAIL_USE_SSL"),
         )
 
+        start_extra = {"target_user_id": user.id}
         try:
-            mail.send(msg)
-            current_app.app_log.info("register_mail_sent", extra={"target_user_id": user.id})
+            with add_duration(start_extra):
+                mail.send(msg)
+            current_app.app_log.info("register_mail_sent", extra=start_extra)
             audit("user_register", outcome="success", target_user_id=user.id, target_username=user.username, target_email=user.email, is_admin=user.is_admin)
             flash(f"User registered. Activation email sent to {user.email}.", "success")
         except Exception:
-            current_app.logger.error("register_mail_send_failed", exc_info=True, extra={"target_user_id": user.id})
+            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            current_app.logger.exception("register_mail_send_failed", extra={"target_user_id": user.id, "duration_ms": duration_ms})
             audit("user_register", outcome="error", target_user_id=user.id, reason="mail_send_failed")
-            flash(f"An error has occurred.", "danger")
+            flash("An error has occurred.", "danger")
 
-        
         return redirect(url_for('users.register'))
 
     elif request.method == 'POST':
@@ -106,6 +105,7 @@ This link will expire in 1 hour.
         return redirect(url_for('users.register'))
 
     return render_template('register.html', form=form)
+
 
 @users.route("/forgot_password", methods=['GET', 'POST'])
 def forgot_password():
@@ -148,12 +148,16 @@ Please go to the following link to set a new password:
 
 This link will expire in 1 hour.
 """
+
+        start_extra = {"target_user_id": user.id}
         try:
-            mail.send(msg)
-            current_app.app_log.info("forgot_password_mail_sent", extra={"target_user_id": user.id})
+            with add_duration(start_extra):
+                mail.send(msg)
+            current_app.app_log.info("register_mail_sent", extra=start_extra)
             audit("password_reset_requested", outcome="success", target_user_id=user.id, target_email=user.email)
         except Exception:
-            current_app.logger.error("forgot_password_mail_send_failed", exc_info=True, extra={"target_user_id": user.id})
+            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            current_app.logger.exception("forgot_password_mail_send_failed", extra={"target_user_id": user.id, "duration_ms": duration_ms})
             audit("password_reset_requested", outcome="error", target_user_id=user.id, reason="mail_send_failed")
 
         flash(f"Password reset email sent to {user.email}.", "success")
@@ -167,7 +171,6 @@ This link will expire in 1 hour.
         return redirect(url_for('users.forgot_password'))
 
     return render_template('forgot_password.html', form=form)
-
 
 
 @users.route("/login", methods=['GET', 'POST'])
@@ -214,7 +217,7 @@ def login():
                 current_app.app_log.warning("login_validation_failed", extra={"error": f"{field}: {errors[0]}"})
             break
         return redirect(url_for('users.login'))
-    
+
     return render_template('login.html', form=form)
 
 
@@ -225,6 +228,7 @@ def logout():
         audit("logout", outcome="success", user_id=current_user.id, username=current_user.username)
     logout_user()
     return redirect(url_for('users.login'))
+
 
 @users.route("/delete_user/<int:user_id>", methods=["POST"])
 @login_required
@@ -251,6 +255,7 @@ def delete_user(user_id):
     flash(f"User '{user.username}' deleted.", "success")
     return redirect(url_for("main.user_list"))
 
+
 @users.route("/grant_admin/<int:user_id>", methods=["POST"])
 @login_required
 def grant_admin(user_id):
@@ -270,6 +275,7 @@ def grant_admin(user_id):
     audit("grant_admin", outcome="success", target_user_id=user.id, target_username=user.username)
     flash(f"Granted admin privileges to {user.username}.", "success")
     return redirect(url_for("main.user_list"))
+
 
 @users.route("/remove_admin/<int:user_id>", methods=["POST"])
 @login_required
@@ -301,6 +307,7 @@ def remove_admin(user_id):
 
     return redirect(url_for("main.user_list"))
 
+
 @users.route("/reset_password/<token>", methods=['GET', 'POST'])
 def reset_password(token):
     if current_user.is_authenticated:
@@ -312,12 +319,12 @@ def reset_password(token):
         audit("reset_password", outcome="denied", reason="invalid_or_expired_token")
         flash('That is an invalid or expired token', 'warning')
         return redirect(url_for('users.login'))
-    
+
     if user.is_active:
         audit("reset_password", outcome="denied", target_user_id=user.id, reason="already_activated")
         flash('Your account is already activated.', 'warning')
         return redirect(url_for('users.login'))
-    
+
     form = ResetPasswordForm()
     if form.validate_on_submit():
         if not bcrypt.check_password_hash(user.password, form.old_password.data):
@@ -347,18 +354,6 @@ def reset_password(token):
 
     return render_template('reset_password.html', token=token, form=form)
 
-# @users.route("/__mail_test")
-# @login_required
-# def mail_test():
-#     try:
-#         msg = Message("Test email", recipients=["julianamindev@gmail.com"])
-#         msg.body = "If you receive this, SMTP is working."
-#         mail.send(msg)
-#         current_app.app_log.info("mail_test_sent", extra={"user_id": current_user.id})
-#         return "ok"
-#     except Exception as e:
-#         current_app.logger.error("mail_test_failed", exc_info=True)
-#         return "fail", 500
 
 # --- SMTP probes (TLS/SSL) -----------------------------------------------
 import smtplib
@@ -392,14 +387,13 @@ def _smtp_probe(mode: str, to_addr: str):
             server.starttls()
             server.ehlo()
 
-        # Show SMTP conversation in your console logs (temporary)
-        server.set_debuglevel(1)
+        # Only show SMTP conversation when debugging
+        server.set_debuglevel(1 if current_app.debug else 0)
 
         server.login(username, password)
         refused = server.sendmail(sender, [to_addr], msg.as_string())
         server.quit()
 
-        # refused is a dict of {recipient: (code, resp)} if any were rejected
         ok = (refused == {})
         return ok, {"refused": refused, "subject": subject}
     except smtplib.SMTPAuthenticationError as e:
@@ -422,6 +416,3 @@ def smtp_test():
     else:
         return f"FAIL ({mode}) → {info}", 500
 # -------------------------------------------------------------------------
-
-
-

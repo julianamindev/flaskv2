@@ -1,15 +1,39 @@
 from datetime import datetime, timezone
-from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
+import time
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
 
+from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
 
 main = Blueprint('main', __name__)
+
+# ---------- TEST DATA (in-memory) ----------
+def _make_test_data():
+    # 4 apps, ~40 streams each, ~15 builds per stream
+    data = {}
+    app_names = ["MIG", "HCM", "IEFIN", "Landmark"]  # <-- use real names
+    for app_name in app_names:
+        streams = {}
+        for j in range(1, 41):           # Stream 1..40
+            s_name = f"Stream {j}"
+            builds = [f"{j}.{k:02d}" for k in range(1, 16)]  # 15 builds
+            streams[s_name] = builds
+        data[app_name] = streams
+    return data
+
+TEST_APP_DATA = _make_test_data()
+
+def _paginate(items, page: int, per_page: int):
+    start = (page - 1) * per_page
+    end   = start + per_page
+    return items[start:end], end < len(items)
 
 def audit(action: str, **fields):
     """Standardize audit events. 'action' becomes the log message; fields go to JSON."""
     # Use 'force_log' for events you want to keep even if path is in DropPathFilter
     current_app.audit.info(action, extra=fields)
+
 
 @main.route("/")
 @main.route("/home")
@@ -19,57 +43,95 @@ def home():
     return render_template('dashboard.html')
 
 
-@main.route("/lars2aws")
+@main.route("/lars2aws", methods=["GET"])
 @login_required
 def lars2aws():
+    APPS = ["MIG", "HCM", "IEFIN", "Landmark"]
     current_app.app_log.info("view_lars2aws")
-    return render_template('lars2aws.html')
+    form=BlankForm()
+    return render_template('lars2aws.html', form=form, apps=APPS)
+
+# ---------- AJAX for Select2 (Streams) ----------
+@main.get("/api/streams")
+@login_required
+def api_streams():
+    app_name = request.args.get("app", "")
+    q        = (request.args.get("q") or "").strip().lower()
+    page     = int(request.args.get("page", 1))
+    per_page = 30
+
+    streams = list((TEST_APP_DATA.get(app_name) or {}).keys())
+    if q:
+        streams = [s for s in streams if q in s.lower()]
+    page_items, more = _paginate(streams, page, per_page)
+
+    # Select2 expects id/text
+    results = [{"id": s, "text": s} for s in page_items]
+    return jsonify({"results": results, "pagination": {"more": more}})
+
+# ---------- AJAX for Select2 (Builds) ----------
+@main.get("/api/builds")
+@login_required
+def api_builds():
+    app_name  = request.args.get("app", "")
+    stream_id = request.args.get("stream_id") or request.args.get("stream") or ""
+    q         = (request.args.get("q") or "").strip().lower()
+    page      = int(request.args.get("page", 1))
+    per_page  = 30
+
+    builds = list((TEST_APP_DATA.get(app_name, {}).get(stream_id, [])))
+    if q:
+        builds = [b for b in builds if q in b.lower()]
+    page_items, more = _paginate(builds, page, per_page)
+
+    results = [{"id": b, "text": b} for b in page_items]
+    return jsonify({"results": results, "pagination": {"more": more}})
 
 @main.route("/list")
 @login_required
 def user_list():
+    start = time.perf_counter()
     try:
         users = User.query.all()
-        current_app.app_log.info("view_user_list", extra={"count": len(users)})
-        current_app.logger.exception("user_list_query_failed")
+        duration_ms = (time.perf_counter() - start) * 1000
+        current_app.app_log.info("view_user_list", extra={"count": len(users), "duration_ms": round(duration_ms, 2)})
         return render_template('userlist.html', users=users)
     except Exception:
-        # Human-readable error + stack trace
-        current_app.logger.error("user_list_query_failed", exc_info=True)
-        # Optional audit trail of the failure (who attempted it)
-        audit("user_list_query_failed", outcome="error")
+        duration_ms = (time.perf_counter() - start) * 1000
+        # Stack trace + request/user context go to errors.log (JSON)
+        current_app.logger.exception("user_list_query_failed")
+        # Audit trail (no secrets): who attempted, how long it took
+        audit("user_list_query_failed", outcome="error", duration_ms=round(duration_ms, 2))
         flash("Could not load users at the moment.", "warning")
         return redirect(url_for("main.home"))
 
 @main.route("/check-session")
 def check_session():
-    # Routine pings are dropped by DropPathFilter; only log interesting events.
     if not current_user.is_authenticated:
-        # User already logged out (browser still pinging)
         audit("session_check_unauthenticated", outcome="redirect_login", force_log=True)
         flash("Session expired. Please log in again.", "warning")
         return redirect(url_for('users.login'))
-    
+
     login_time = session.get('login_time')
     if login_time:
         now = datetime.now(timezone.utc).timestamp()
         timeout = current_app.permanent_session_lifetime.total_seconds()
-        if now - login_time > timeout:
+        age = now - login_time
+        if age > timeout:
             username = getattr(current_user, "username", "-")
             logout_user()
             session.pop('login_time', None)
             audit(
                 "session_expired",
-                user=username,
                 reason="timeout",
                 max_age_seconds=timeout,
-                force_log=True  # bypass DropPathFilter for this important event
+                session_age_seconds=round(age, 2),
+                force_log=True
             )
             flash("Session expired. Please log in again.", "warning")
             return redirect(url_for('users.login'))
 
-    # still valid; no log (keeps noise down)   
-    return '', 204  # Session still valid
+    return '', 204  # still valid; no noise
 
 
 # @main.route("/__audit_test")
