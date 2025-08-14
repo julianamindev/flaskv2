@@ -7,7 +7,10 @@ from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, current_user, logout_user
 from flaskv2.config import BaseConfig
 from flaskv2.logging_setup import setup_logging
+from flaskv2.extensions import cache
 from flask_mail import Mail
+
+from flaskv2.utils.helpers import get_app_data
 
 db = SQLAlchemy()
 bcrypt = Bcrypt()
@@ -23,13 +26,23 @@ def create_app(config_class=BaseConfig):
     #     config_class = {"dev": DevConfig, "prod": ProdConfig, "test": TestConfig}.get(env, DevConfig)
 
     app.config.from_object(config_class)
-
     setup_logging(app)
+
+    os.makedirs(app.config["CACHE_DIR"], exist_ok=True)
 
     db.init_app(app)
     bcrypt.init_app(app)
     login_manager.init_app(app)
     mail.init_app(app)
+    cache.init_app(app)
+
+    # ---- Warmup at boot ----
+    with app.app_context():
+        try:
+            get_app_data(force_refresh=True)
+            app.app_log.info("app_data warmed (filesystem cache primed)")
+        except Exception:
+            app.logger.exception("app_data warmup failed")
 
     # Prevent caching of all pages, including login
     @app.after_request

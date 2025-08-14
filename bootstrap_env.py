@@ -6,10 +6,10 @@ SECRET_MAP = {
 }
 
 def load_env():
-    envnum = int(os.getenv("ENVNUM", "2"))
+    envnum = int(os.getenv("ENVNUM", "1"))
 
     # --- Heavy work only once per process tree ---
-    if os.environ.get("L2A_ENV_BOOTSTRAPPED") != "1":
+    if os.environ.get("ENV_BOOTSTRAPPED") != "1":
         if envnum == 1:
             # Local: load .env once (parent); child inherits the env
             from dotenv import load_dotenv, find_dotenv
@@ -36,7 +36,7 @@ def load_env():
             os.environ["ENVNUM"] = str(envnum)
 
         # mark heavy work done (propagates to child via environment)
-        os.environ["L2A_ENV_BOOTSTRAPPED"] = "1"
+        os.environ["ENV_BOOTSTRAPPED"] = "1"
 
     # --- Print only in serving child when reloader is active ---
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true":

@@ -51,6 +51,12 @@ class BaseConfig:
     ERROR_LOG_MAX_BYTES     = int(os.getenv("ERROR_LOG_MAX_BYTES", 10 * 1024 * 1024))
     ERROR_LOG_BACKUP_COUNT  = int(os.getenv("ERROR_LOG_BACKUP_COUNT", 10))
 
+    # ---- Flask-Caching (FileSystemCache) ----
+    CACHE_TYPE              = os.getenv("CACHE_TYPE", "FileSystemCache")
+    CACHE_DIR               = os.getenv("CACHE_DIR", r"C:\flask-cache")
+    CACHE_DEFAULT_TIMEOUT   = int(os.getenv("CACHE_DEFAULT_TIMEOUT", 15 * 60))
+    APP_DATA_TTL            = int((os.getenv("APP_DATA_TTL", 15 * 60)))
+
 # class DevConfig(BaseConfig):
 #     DEBUG = True
 #     ROOT_LOG_LEVEL = "INFO"      # see framework warnings in dev

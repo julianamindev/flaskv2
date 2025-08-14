@@ -22,7 +22,6 @@ def audit(action: str, **fields):
     current_app.audit.info(action, extra=fields)
 # -----------------------------------------------------------------------------
 
-
 users = Blueprint('users', __name__)
 
 @users.route("/register", methods=['GET', 'POST'])

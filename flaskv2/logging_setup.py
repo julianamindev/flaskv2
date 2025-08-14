@@ -165,7 +165,7 @@ def setup_logging(app):
     app.app_log = logging.getLogger("app")
     app.audit   = logging.getLogger("audit")
 
-    # --- Option A: always capture unhandled exceptions (even in DEBUG) ----
+    # --- always capture unhandled exceptions (even in DEBUG) ----
     @app.teardown_request
     def _log_unhandled_exception(exc):
         # exc is None for normal requests; non-None for unhandled exceptions
