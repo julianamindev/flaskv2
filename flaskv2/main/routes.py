@@ -25,7 +25,7 @@ def home():
 @main.route("/lars2aws", methods=["GET"])
 @login_required
 def lars2aws():
-    APPS = ["MIG", "HCM", "IEFIN", "Landmark"]
+    APPS = current_app.config["LARS_APPS"]
     current_app.app_log.info("view_lars2aws")
     form=BlankForm()
     return render_template('lars2aws.html', form=form, apps=APPS)

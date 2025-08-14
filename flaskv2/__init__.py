@@ -26,6 +26,11 @@ def create_app(config_class=BaseConfig):
     #     config_class = {"dev": DevConfig, "prod": ProdConfig, "test": TestConfig}.get(env, DevConfig)
 
     app.config.from_object(config_class)
+
+    @app.context_processor
+    def inject_apps():
+        return {"APPS": app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])}
+
     setup_logging(app)
 
     os.makedirs(app.config["CACHE_DIR"], exist_ok=True)
@@ -46,9 +51,9 @@ def create_app(config_class=BaseConfig):
                 app.app_log.info("test app_data warmed (filesystem cache primed)")
             else:
                 # Staging/Prod: warm stream lists (cheap; builds stay on-demand)
-                for name in ["MIG", "HCM", "IEFin", "Landmark"]:
+                for name in app.config["LARS_APPS"]:
                     get_streams_for_app(name)
-                app.app_log.info("streams warmed for MIG/HCM/IEFin/Landmark")
+                app.app_log.info("streams warmed for %s", ", ".join(app.config["LARS_APPS"]))
         except Exception:
             app.logger.exception("warmup failed")
 

@@ -121,7 +121,7 @@ def _paginate(items, page: int, per_page: int):
 def _make_test_data():
     # 4 apps, ~40 streams each, ~15 builds per stream
     data = {}
-    app_names = ["MIG", "HCM", "IEFIN", "Landmark"]
+    app_names = current_app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])
     for app_name in app_names:
         streams = {}
         for j in range(1, 41):           

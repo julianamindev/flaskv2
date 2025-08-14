@@ -61,6 +61,7 @@ class BaseConfig:
     LARS_BASE_URL       = os.getenv("LARS_BASE_URL", "https://builds.lawson.com/lars/util/get")
     LARS_STREAMS_TTL    = int(os.getenv("LARS_STREAMS_TTL", 30 * 60))
     LARS_BUILDS_TTL     = int(os.getenv("LARS_BUILDS_TTL", 15 * 60))
+    LARS_APPS           = [a.strip() for a in os.getenv("LARS_APPS", "MIG,HCM,IEFin,Landmark").split(",") if a.strip()]
 
 # class DevConfig(BaseConfig):
 #     DEBUG = True
