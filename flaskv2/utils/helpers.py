@@ -50,39 +50,42 @@ def _rel_window(now: datetime | None = None, span: int = 2) -> set[str]:
 
 def get_streams_for_app(app_name: str) -> list[str]:
     """
-    Streams selection (all read from Branch):
-      - MIG: include MAINLINE, or startswith int/hotfix/feature/rel_ (all case-insensitive)
-      - HCM/IEFin/Landmark: include only REL_YYYY_MM for current±2 months (case-insensitive exact)
-    Results are de-duped and case-insensitively sorted.
+    Streams selection:
+      MIG  -> read from Name; include MAINLINE, startswith int/hotfix/rel_, or contains 'feature' (all case-insensitive)
+      else -> read from Branch; include only REL_YYYY_MM in current±2 (case-insensitive exact)
     """
     envnum = _get_envnum()
-    key = f"streams:v2:env{envnum}:{app_name}"
+    key = f"streams:v3:env{envnum}:{app_name}"  # bump key version to invalidate old cache
     cached = cache.get(key)
     if cached is not None:
         return cached
 
     txt = _fetch_csv_text(app_name)
     out: list[str] = []
+    rel5 = _rel_window()  # lowercase set for current±2 months
 
-    rel5 = _rel_window()  # for non-MIG
+    # pick the column to use
+    col = "Name" if app_name == "MIG" else "Branch"
+
     for row in _iter_csv_rows(txt):
-        branch = (row.get("Branch") or "").strip()
-        if not branch:
+        val = (row.get(col) or "").strip()
+        if not val:
             continue
-        lo = branch.lower()
+        lo = val.lower()
 
         if app_name == "MIG":
-            if lo == "mainline" or lo.startswith(("int", "hotfix", "feature", "rel_")):
-                out.append(branch)
+            if (
+                lo == "mainline"
+                or lo.startswith(("int", "hotfix", "rel_"))
+                or "feature" in lo          # MIG often uses ..._Feature at the end
+            ):
+                out.append(val)
         else:
             if lo in rel5:
-                out.append(branch)
+                out.append(val)
 
-    # dedup + stable sort
     out = sorted(set(out), key=str.lower)
-
-    ttl = int(current_app.config.get("LARS_STREAMS_TTL", 1800))  # ~30 min
-    cache.set(key, out, timeout=ttl)
+    cache.set(key, out, timeout=int(current_app.config.get("LARS_STREAMS_TTL", 1800)))
     current_app.app_log.info("streams loaded: app=%s count=%s", app_name, len(out))
     return out
 
