@@ -15,7 +15,10 @@ class StripAnsiFilter(logging.Filter):
 
 class DropPathFilter(logging.Filter):
     """Drop very noisy request paths from app/audit logs."""
-    DROP_PREFIXES = ("/check-session", "/static/")
+    DROP_PREFIXES = (
+        "/check-session",
+        "/static/"
+    )
     def filter(self, record):
         if getattr(record, "force_log", False):
             return True

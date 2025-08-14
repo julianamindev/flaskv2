@@ -55,7 +55,7 @@ def get_streams_for_app(app_name: str) -> list[str]:
       else -> read from Branch; include only REL_YYYY_MM in current±2 (case-insensitive exact)
     """
     envnum = _get_envnum()
-    key = f"streams:v3:env{envnum}:{app_name}"  # bump key version to invalidate old cache
+    key = f"streams:v1:env{envnum}:{app_name}"  # bump key version to invalidate old cache
     cached = cache.get(key)
     if cached is not None:
         return cached
@@ -94,7 +94,7 @@ def get_builds_for_app_stream(app_name: str, stream: str) -> list[str]:
     Fetch /<APP>/<STREAM>/ CSV and return list of ReleaseID strings.
     """
     envnum = _get_envnum()
-    key = f"builds:v2:env{envnum}:{app_name}:{stream}"
+    key = f"builds:v1:env{envnum}:{app_name}:{stream}"
     cached = cache.get(key)
     if cached is not None:
         return cached
