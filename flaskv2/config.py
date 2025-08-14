@@ -57,6 +57,11 @@ class BaseConfig:
     CACHE_DEFAULT_TIMEOUT   = int(os.getenv("CACHE_DEFAULT_TIMEOUT", 15 * 60))
     APP_DATA_TTL            = int((os.getenv("APP_DATA_TTL", 15 * 60)))
 
+    # ---- LARS ----
+    LARS_BASE_URL       = os.getenv("LARS_BASE_URL", "https://builds.lawson.com/lars/util/get")
+    LARS_STREAMS_TTL    = int(os.getenv("LARS_STREAMS_TTL", 30 * 60))
+    LARS_BUILDS_TTL     = int(os.getenv("LARS_BUILDS_TTL", 15 * 60))
+
 # class DevConfig(BaseConfig):
 #     DEBUG = True
 #     ROOT_LOG_LEVEL = "INFO"      # see framework warnings in dev

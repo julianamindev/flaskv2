@@ -10,7 +10,7 @@ from flaskv2.logging_setup import setup_logging
 from flaskv2.extensions import cache
 from flask_mail import Mail
 
-from flaskv2.utils.helpers import get_app_data
+from flaskv2.utils.helpers import get_app_data, get_streams_for_app, _get_envnum
 
 db = SQLAlchemy()
 bcrypt = Bcrypt()
@@ -39,10 +39,19 @@ def create_app(config_class=BaseConfig):
     # ---- Warmup at boot ----
     with app.app_context():
         try:
-            get_app_data(force_refresh=True)
-            app.app_log.info("app_data warmed (filesystem cache primed)")
+            envnum = _get_envnum()
+            if envnum == 1:
+                # Dev/test: warm synthetic blob used only in ENV=1
+                get_app_data(force_refresh=True)
+                app.app_log.info("test app_data warmed (filesystem cache primed)")
+            else:
+                # Staging/Prod: warm stream lists (cheap; builds stay on-demand)
+                for name in ["MIG", "HCM", "IEFin", "Landmark"]:
+                    get_streams_for_app(name)
+                app.app_log.info("streams warmed for MIG/HCM/IEFin/Landmark")
         except Exception:
-            app.logger.exception("app_data warmup failed")
+            app.logger.exception("warmup failed")
+
 
     # Prevent caching of all pages, including login
     @app.after_request
