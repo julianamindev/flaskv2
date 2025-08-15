@@ -2,26 +2,26 @@
 
 {% block title %}DevOps Cockpit - LARS2AWS{% endblock%}
 
-{# Page-specific CSS #}
 {% block extra_head %}
-
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
   <link href="{{ url_for('static', filename='css/extras/lars2aws-tab-styles.css') }}" rel="stylesheet" />
-
 {% endblock %}
 
 {% block main %}
 <main>
   <div class="container-fluid px-2 px-md-3 pt-4">
 
-    <h1 class="h3 mb-4">LARS → AWS</h1>
+    <h1 class="h3 mb-3">LARS → AWS</h1>
+
+    <!-- inline alert area -->
+    <div id="l2a-alerts"></div>
 
     <div class="alert alert-info mb-4" role="alert">
       <div class="fw-semibold mb-1">How it works</div>
       <ul class="mb-0">
         <li>Pick a <b>Stream</b>, then choose a <b>Build</b> (lists load on demand).</li>
-        <li>Missing build? Toggle <b>Manual input</b> in that app’s tab and type the build code.</li>
-        <li>Review the selected builds below, set the S3 destination suffix, then <b>Submit</b>.</li>
+        <li>If your stream isn’t listed, toggle <b>Manual stream</b>, enter the exact stream name, and click <b>Use stream</b>. We’ll validate it against LARS and then load its builds.</li>
+        <li>Review the selected builds below, set the S3 destination suffix, then <b>Upload to S3</b>.</li>
       </ul>
     </div>
 
@@ -46,43 +46,48 @@
         <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="{{ app|lower }}-pane" role="tabpanel" aria-labelledby="{{ app|lower }}-tab">
 
           <div class="row g-3">
+            <!-- STREAMS -->
             <div class="col-md-6">
-              <label class="form-label" for="{{ app|lower }}-stream">Streams</label>
+              <div class="d-flex justify-content-between align-items-center">
+                <label class="form-label mb-0" for="{{ app|lower }}-stream">Streams</label>
+
+                <div class="form-check form-switch ms-3">
+                  <input class="form-check-input" type="checkbox" id="{{ app|lower }}-manual-toggle">
+                  <label class="form-check-label" for="{{ app|lower }}-manual-toggle">Manual stream</label>
+                </div>
+              </div>
+
+              <!-- Normal Select2 for streams (hidden in manual mode) -->
               <select class="form-select select2 stream-select"
                       id="{{ app|lower }}-stream"
                       name="{{ app|lower }}_stream"
                       data-app="{{ app }}"
                       data-placeholder="Choose a stream">
                 <option></option>
-                {# options populated by JS from APP_DATA #}
               </select>
+
+              <!-- Manual stream entry (shown in manual mode) -->
+              <div class="input-group mt-2 d-none" id="{{ app|lower }}-manual-stream-wrap">
+                <input type="text"
+                       class="form-control"
+                       id="{{ app|lower }}-manual-input"
+                       placeholder="Enter exact stream (e.g., REL_2025_08, intINT_2025_08)">
+                <button class="btn btn-outline-primary" type="button" id="{{ app|lower }}-manual-validate">
+                  Use stream
+                </button>
+              </div>
             </div>
 
+            <!-- BUILDS -->
             <div class="col-md-6">
-              <div class="d-flex justify-content-between align-items-center">
-                <label class="form-label mb-0" for="{{ app|lower }}-build">Builds</label>
-
-                <div class="form-check form-switch ms-3">
-                  <input class="form-check-input" type="checkbox" id="{{ app|lower }}-manual-toggle">
-                  <label class="form-check-label" for="{{ app|lower }}-manual-toggle">Manual input</label>
-                </div>
-              </div>
-
-              {# normal Select2 dropdown (hidden when manual mode is ON) #}
+              <label class="form-label" for="{{ app|lower }}-build">Builds</label>
               <select class="form-select select2 build-select"
                       id="{{ app|lower }}-build"
                       name="{{ app|lower }}_build"
                       data-app="{{ app }}"
-                      data-placeholder="Choose a build"
-                      disabled>
+                      data-placeholder="Choose a build">
                 <option></option>
               </select>
-
-              {# manual build code (shown when manual mode is ON) #}
-              <input type="text"
-                    class="form-control mt-2 d-none"
-                    id="{{ app|lower }}-manual-input"
-                    placeholder="Enter build version (e.g., 3.07)">
             </div>
           </div>
 
@@ -98,8 +103,7 @@
         {% for app in APPS %}
         <div class="col-md-6 col-lg-3">
           <label class="form-label" for="summary-{{ app|lower }}">{{ app }}</label>
-          <input type="text" id="summary-{{ app|lower }}" class="form-control" placeholder="(none)"
-                 readonly>
+          <input type="text" id="summary-{{ app|lower }}" class="form-control" placeholder="(none)" readonly>
           <!-- Hidden inputs that actually submit -->
           <input type="hidden" name="summary_{{ app|lower }}_stream" id="hidden-{{ app|lower }}-stream">
           <input type="hidden" name="summary_{{ app|lower }}_build"  id="hidden-{{ app|lower }}-build">
@@ -107,7 +111,7 @@
         {% endfor %}
       </div>
 
-      {# --- Path prefix field --- #}
+      <!-- Path prefix -->
       <div class="mt-4">
         <label class="form-label" for="migops-lars-input">S3 Destination</label>
         <div class="input-group">
@@ -119,7 +123,6 @@
             class="form-control"
             placeholder="e.g., MT/month or INT/intMSCM..." />
         </div>
-        {# full path we’ll submit #}
         <input type="hidden" name="migops_lars_path" id="migops-lars-path">
       </div>
 

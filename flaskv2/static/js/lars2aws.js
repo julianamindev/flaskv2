@@ -1,15 +1,34 @@
 (function () {
   const APPS = (window.L2A && window.L2A.APPS) || [];
 
+  function showAlert(msg, type = 'warning') {
+    const $zone = $('#l2a-alerts');
+    const $el = $(`
+      <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+        ${msg}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>`);
+    $zone.empty().append($el);
+  }
+
   function initAjaxSelect2ForApp(app) {
     const key = app.toLowerCase();
     const $pane   = $(`#${key}-pane`);
     const $stream = $(`#${key}-stream`);
     const $build  = $(`#${key}-build`);
-    const $manualToggle = $(`#${key}-manual-toggle`);
-    const $manualInput  = $(`#${key}-manual-input`);
 
-    // Streams
+    const $manualToggle   = $(`#${key}-manual-toggle`);
+    const $manualWrap     = $(`#${key}-manual-stream-wrap`);
+    const $manualInput    = $(`#${key}-manual-input`);
+    const $manualValidate = $(`#${key}-manual-validate`);
+
+    // Which stream is currently active?
+    function effectiveStream() {
+      if ($manualToggle.is(':checked')) return ($manualInput.val() || '').trim();
+      return $stream.val() || '';
+    }
+
+    // STREAMS
     $stream.select2({
       width: '100%',
       allowClear: true,
@@ -29,8 +48,8 @@
       dropdownParent: $pane
     });
 
-    // Builds
-    $build.prop('disabled', true).select2({
+    // BUILDS (always enabled; pulls from effectiveStream)
+    $build.prop('disabled', false).select2({
       width: '100%',
       allowClear: true,
       placeholder: $build.data('placeholder') || 'Choose a build',
@@ -40,11 +59,43 @@
         dataType: 'json',
         delay: 250,
         cache: true,
-        transport: (params, ok, fail) => {
-          if (!$stream.val()) { ok({ results: [], pagination: { more: false } }); return; }
-          return $.ajax(params).then(ok, fail);
+
+        // Validate manual stream (if any) before hitting /api/builds
+        transport: function (params, success, failure) {
+          const sid = effectiveStream();
+          if (!sid) { success({ results: [], pagination: { more: false } }); return; }
+
+          if ($manualToggle.is(':checked')) {
+            $.getJSON('/api/streams/exists', { app, stream: sid })
+              .done(({ exists, stream }) => {
+                if (!exists) {
+                  showAlert(`Stream <b>${sid}</b> not found for <b>${app}</b>.`, 'danger');
+                  success({ results: [], pagination: { more: false } });
+                  return;
+                }
+                // Update manual text with canonical casing
+                if (stream && stream !== sid) $manualInput.val(stream);
+                $.ajax(params).then(success, failure);
+              })
+              .fail(() => {
+                showAlert('Unable to validate stream right now.', 'danger');
+                success({ results: [], pagination: { more: false } });
+              });
+            return;
+          }
+
+          // Normal mode
+          return $.ajax(params).then(success, failure);
         },
-        data: params => ({ app, stream_id: $stream.val(), q: params.term || '', page: params.page || 1 }),
+
+        // Always send the effective stream
+        data: params => ({
+          app,
+          stream_id: effectiveStream(),
+          q: params.term || '',
+          page: params.page || 1
+        }),
+
         processResults: data => ({
           results: data.results || [],
           pagination: { more: data.pagination && data.pagination.more }
@@ -53,51 +104,67 @@
       dropdownParent: $pane
     });
 
-    // Summary helpers
-    const setSummary = (buildVal) => {
-      const streamVal = $stream.val() || '';
+    // Summary + hidden inputs
+    function setSummary(buildVal) {
+      const s = effectiveStream();
       $(`#summary-${key}`).val(buildVal || '');
-      $(`#hidden-${key}-stream`).val(streamVal);
+      $(`#hidden-${key}-stream`).val(s);
       $(`#hidden-${key}-build`).val(buildVal || '');
-    };
+    }
 
-    // Events
+    // Stream (normal) changes: clear build selection
     $stream.on('select2:select select2:clear', () => {
-      const hasStream = !!$stream.val();
-      if ($manualToggle.is(':checked')) {
-        setSummary($manualInput.val().trim());
-      } else {
-        $build.prop('disabled', !hasStream).val(null).trigger('change');
-        setSummary('');
-      }
+      $build.val(null).trigger('change');
+      setSummary('');
     });
 
+    // Builds change: update summary
     $build.on('select2:select select2:clear', () => {
       setSummary($build.val() || '');
     });
 
-    $manualToggle.on('change', function () {
-      const on = this.checked;
-      const $buildS2 = $build.next('.select2');
+    // Manual STREAM mode toggle
+    function enterManual(on) {
+      const $streamS2 = $stream.next('.select2');
       if (on) {
-        $buildS2.addClass('d-none');
-        $build.prop('disabled', true).val(null).trigger('change');
-        $manualInput.removeClass('d-none').focus();
-        setSummary($manualInput.val().trim());
+        $streamS2.addClass('d-none');
+        $manualWrap.removeClass('d-none');
+        $build.val(null).trigger('change');
+        setSummary('');
+        $manualInput.focus();
       } else {
-        $manualInput.addClass('d-none');
-        $buildS2.removeClass('d-none');
-        $build.prop('disabled', !$stream.val());
-        setSummary($build.val() || '');
+        $manualWrap.addClass('d-none');
+        $streamS2.removeClass('d-none');
+        $build.val(null).trigger('change');
+        setSummary('');
       }
-    });
+    }
+    $manualToggle.on('change', function () { enterManual(this.checked); });
 
-    $manualInput.on('input', () => {
-      if ($manualToggle.is(':checked')) setSummary($manualInput.val().trim());
+    // Optional: "Use stream" button to set into stream Select2 (nice UX)
+    function validateAndApplyManualStream() {
+      const sid = ($manualInput.val() || '').trim();
+      if (!sid) return;
+      $.getJSON('/api/streams/exists', { app, stream: sid })
+        .done(({ exists, stream }) => {
+          if (!exists) {
+            showAlert(`Stream <b>${sid}</b> not found for <b>${app}</b>.`, 'danger');
+            $build.val(null).trigger('change');
+            setSummary('');
+            return;
+          }
+          const $opt = new Option(stream, stream, true, true);
+          $stream.append($opt).trigger('change');
+          showAlert(`Using stream <b>${stream}</b> for <b>${app}</b>.`, 'success');
+        })
+        .fail(() => showAlert('Unable to validate stream right now.', 'danger'));
+    }
+    $manualValidate.on('click', validateAndApplyManualStream);
+    $manualInput.on('keypress', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); validateAndApplyManualStream(); }
     });
   }
 
-  // On ready
   $(function () {
     APPS.forEach(initAjaxSelect2ForApp);
 
