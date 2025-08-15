@@ -5,7 +5,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, get_app_data, get_builds_for_app_stream, get_streams_for_app
+from flaskv2.utils.helpers import _get_envnum, _paginate, get_app_data, get_builds_for_app_stream, get_streams_for_app, stream_exists_live
 
 main = Blueprint('main', __name__)
 
@@ -95,18 +95,13 @@ def api_builds():
 def api_stream_exists():
     app_name = request.args.get("app", "")
     stream   = (request.args.get("stream") or "").strip()
+
     if not app_name or not stream:
         return jsonify({"exists": False, "error": "missing app/stream"}), 400
 
-    if _get_envnum() == 1:
-        app_data = get_app_data()
-        streams = list((app_data.get(app_name) or {}).keys())
-    else:
-        streams = get_streams_for_app(app_name)
-
-    # case-insensitive exact match; return canonical casing if found
-    canonical = next((s for s in streams if s.lower() == stream.lower()), None)
-    return jsonify({"exists": bool(canonical), "stream": canonical})
+    # Live existence check against LARS; no filtering here
+    exists = stream_exists_live(app_name, stream)
+    return jsonify({"exists": exists, "stream": stream if exists else None})
 
 @main.route("/list")
 @login_required

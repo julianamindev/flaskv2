@@ -125,7 +125,21 @@ def get_builds_for_app_stream(app_name: str, stream: str) -> list[dict]:
     current_app.app_log.info("builds loaded: app=%s stream=%s count=%s", app_name, stream, len(items))
     return items
 
-
+def stream_exists_live(app_name: str, stream: str) -> bool:
+    """
+    Return True iff https://.../get/<app>/<stream>/ returns 2xx.
+    We don't filter here—just check the live endpoint.
+    """
+    try:
+        # Will raise for non-2xx (e.g., 404)
+        _fetch_csv_text(f"{app_name}/{stream}")
+        return True
+    except requests.HTTPError as e:
+        # 4xx/5xx → does not exist
+        return False
+    except Exception:
+        current_app.logger.exception("stream_exists_live: unexpected error app=%s stream=%s", app_name, stream)
+        return False
 
 
 def _paginate(items, page: int, per_page: int):
