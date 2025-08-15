@@ -7,6 +7,18 @@ from dateutil.relativedelta import relativedelta  # pip install python-dateutil
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+MATURITY = {
+    "R":  "Released",
+    "UT": "UpgradeTested",
+    "ST": "SmokeTested",
+    "AQ": "AppQualified",
+    "B":  "Built",
+    "TO": "TurnedOver",
+    "JT": "JunitTested",
+}
+
+_MATURITY_NAME_TO_CODE = {v.lower(): k for k, v in MATURITY.items()}
+
 # Reusable session with retries/timeouts
 _session = requests.Session()
 _adapter = HTTPAdapter(max_retries=Retry(
@@ -88,27 +100,30 @@ def get_streams_for_app(app_name: str) -> list[str]:
     current_app.app_log.info("streams loaded: app=%s count=%s", app_name, len(out))
     return out
 
-def get_builds_for_app_stream(app_name: str, stream: str) -> list[str]:
+def get_builds_for_app_stream(app_name: str, stream: str) -> list[dict]:
     """
-    Fetch /<APP>/<STREAM>/ CSV and return list of ReleaseID strings.
+    Fetch /<APP>/<STREAM>/ CSV and return list of {release_id, code} dicts,
+    where code is the maturity prefix (e.g., 'R', 'B', 'ST', ...).
     """
     envnum = _get_envnum()
-    key = f"builds:v1:env{envnum}:{app_name}:{stream}"
+    key = f"builds:v1:env{envnum}:{app_name}:{stream}"  # <-- bumped to v3
     cached = cache.get(key)
     if cached is not None:
         return cached
 
     txt = _fetch_csv_text(f"{app_name}/{stream}")
-    ids: list[str] = []
+    items: list[dict] = []
     for row in _iter_csv_rows(txt):
         rid = (row.get("ReleaseID") or "").strip()
+        mname = (row.get("Maturity.Name") or "").strip().lower()
         if rid:
-            ids.append(rid)
+            code = _MATURITY_NAME_TO_CODE.get(mname, "N")  # default 'N' if missing/unknown
+            items.append({"release_id": rid, "code": code})
 
-    ttl = int(current_app.config.get("LARS_BUILDS_TTL", 900))  # ~15 min
-    cache.set(key, ids, timeout=ttl)
-    current_app.app_log.info("builds loaded: app=%s stream=%s count=%s", app_name, stream, len(ids))
-    return ids
+    ttl = int(current_app.config.get("LARS_BUILDS_TTL", 900))
+    cache.set(key, items, timeout=ttl)
+    current_app.app_log.info("builds loaded: app=%s stream=%s count=%s", app_name, stream, len(items))
+    return items
 
 
 
@@ -148,7 +163,7 @@ def get_app_data(*, force_refresh: bool = False):
     """
     envnum = _get_envnum()
     if envnum != 1:
-        return {}
+        return _make_test_data()
 
     ttl = int(current_app.config.get("APP_DATA_TTL", 900))
     key = "app_data:v1:env1"  # single key for test data

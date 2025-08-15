@@ -82,7 +82,7 @@
               <input type="text"
                     class="form-control mt-2 d-none"
                     id="{{ app|lower }}-manual-input"
-                    placeholder="Enter build code (e.g., 3.07)">
+                    placeholder="Enter build version (e.g., 3.07)">
             </div>
           </div>
 
@@ -117,14 +117,14 @@
             id="migops-lars-input"
             name="migops_lars_suffix"
             class="form-control"
-            placeholder="e.g., uploads/{{ current_user.username }} or 2025-08-13/releases" />
+            placeholder="e.g., MT/month or INT/intMSCM..." />
         </div>
         {# full path we’ll submit #}
         <input type="hidden" name="migops_lars_path" id="migops-lars-path">
       </div>
 
       <div class="mt-4">
-        <button type="submit" class="btn btn-dark">Submit</button>
+        <button type="submit" class="btn btn-dark">Upload to S3</button>
       </div>
     </form>
 

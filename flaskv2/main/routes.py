@@ -5,7 +5,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _paginate, get_app_data, get_builds_for_app_stream, get_streams_for_app
+from flaskv2.utils.helpers import _get_envnum, _paginate, get_app_data, get_builds_for_app_stream, get_streams_for_app
 
 main = Blueprint('main', __name__)
 
@@ -39,7 +39,14 @@ def api_streams():
     page     = int(request.args.get("page", 1))
     per_page = 30
 
-    streams = get_streams_for_app(app_name)
+    if _get_envnum() == 1:
+        # DEV: serve from test data blob
+        app_data = get_app_data()
+        streams = list((app_data.get(app_name) or {}).keys())
+    else:
+        # STG/PRD: fetch from LARS (cached)
+        streams = get_streams_for_app(app_name)
+
     if q:
         streams = [s for s in streams if q in s.lower()]
     page_items, more = _paginate(streams, page, per_page)
@@ -58,7 +65,17 @@ def api_builds():
     page      = int(request.args.get("page", 1))
     per_page  = 30
 
-    builds = get_builds_for_app_stream(app_name, stream_id)
+    if not app_name or not stream_id:
+        return jsonify({"results": [], "pagination": {"more": False}}), 400
+
+    if _get_envnum() == 1:
+        # DEV: serve from test data blob
+        app_data = get_app_data()
+        builds = list((app_data.get(app_name, {}).get(stream_id, [])))
+    else:
+        # STG/PRD: fetch from LARS (cached)
+        builds = get_builds_for_app_stream(app_name, stream_id)
+        
     if q:
         builds = [b for b in builds if q in b.lower()]
     page_items, more = _paginate(builds, page, per_page)
