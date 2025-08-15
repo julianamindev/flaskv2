@@ -69,18 +69,25 @@ def api_builds():
         return jsonify({"results": [], "pagination": {"more": False}}), 400
 
     if _get_envnum() == 1:
-        # DEV: serve from test data blob
+        # DEV: test blob (strings)
         app_data = get_app_data()
         builds = list((app_data.get(app_name, {}).get(stream_id, [])))
+        if q:
+            builds = [b for b in builds if q in b.lower()]
+        page_items, more = _paginate(builds, page, per_page)
+        results = [{"id": b, "text": b} for b in page_items]
     else:
-        # STG/PRD: fetch from LARS (cached)
-        builds = get_builds_for_app_stream(app_name, stream_id)
-        
-    if q:
-        builds = [b for b in builds if q in b.lower()]
-    page_items, more = _paginate(builds, page, per_page)
+        # STG/PRD: live LARS (list of dicts with release_id + code)
+        all_items = get_builds_for_app_stream(app_name, stream_id)
+        if q:
+            all_items = [it for it in all_items if q in it["release_id"].lower()]
+        page_items, more = _paginate(all_items, page, per_page)
+        # IMPORTANT: id = plain version; text = "CODE--version"
+        results = [
+            {"id": it["release_id"], "text": f"{it['code']}--{it['release_id']}"}
+            for it in page_items
+        ]
 
-    results = [{"id": b, "text": b} for b in page_items]
     return jsonify({"results": results, "pagination": {"more": more}})
 
 @main.route("/list")
