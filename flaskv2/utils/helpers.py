@@ -1,4 +1,5 @@
-import csv, io, requests, os
+import boto3
+import csv, io, requests, os, re
 
 from flask import current_app
 from flaskv2.extensions import cache
@@ -63,11 +64,11 @@ def _rel_window(now: datetime | None = None, span: int = 2) -> set[str]:
 def get_streams_for_app(app_name: str) -> list[str]:
     """
     Streams selection:
-      MIG  -> read from Name; include MAINLINE, startswith int/hotfix/rel_, or contains 'feature' (all case-insensitive)
+      MIG  -> read from Name; include MAINLINE, startswith int/hotfix/rel_/feature (case-insenstive)
       else -> read from Branch; include only REL_YYYY_MM in current±2 (case-insensitive exact)
     """
     envnum = _get_envnum()
-    key = f"streams:v1:env{envnum}:{app_name}"  # bump key version to invalidate old cache
+    key = f"streams:v1:env{envnum}:{app_name}"
     cached = cache.get(key)
     if cached is not None:
         return cached
@@ -106,7 +107,7 @@ def get_builds_for_app_stream(app_name: str, stream: str) -> list[dict]:
     where code is the maturity prefix (e.g., 'R', 'B', 'ST', ...).
     """
     envnum = _get_envnum()
-    key = f"builds:v1:env{envnum}:{app_name}:{stream}"  # <-- bumped to v3
+    key = f"builds:v1:env{envnum}:{app_name}:{stream}"
     cached = cache.get(key)
     if cached is not None:
         return cached
@@ -124,6 +125,7 @@ def get_builds_for_app_stream(app_name: str, stream: str) -> list[dict]:
     cache.set(key, items, timeout=ttl)
     current_app.app_log.info("builds loaded: app=%s stream=%s count=%s", app_name, stream, len(items))
     return items
+
 
 def stream_exists_live(app_name: str, stream: str) -> bool:
     """
@@ -177,7 +179,7 @@ def get_app_data(*, force_refresh: bool = False):
     """
     envnum = _get_envnum()
     if envnum != 1:
-        return _make_test_data()
+        return {}
 
     ttl = int(current_app.config.get("APP_DATA_TTL", 900))
     key = "app_data:v1:env1"  # single key for test data
@@ -190,3 +192,184 @@ def get_app_data(*, force_refresh: bool = False):
     data = _make_test_data()
     cache.set(key, data, timeout=ttl)
     return data
+
+# ----------------- S3 + Upload helpers -----------------
+
+from boto3.s3.transfer import TransferConfig
+
+# Separate session for uploads if you want; using the same _session is also fine.
+if "_uploader_session" not in globals():
+    _uploader_session = requests.Session()
+
+def _s3_client():
+    # AWS creds resolved by your staging setup (env/role)
+    return boto3.client("s3", region_name=current_app.config.get("AWS_REGION"))
+
+def _s3_transfer_config():
+    chunk_mb = int(current_app.config.get("S3_MULTIPART_CHUNK_MB", 16))
+    return TransferConfig(
+        multipart_threshold=chunk_mb * 1024 * 1024,
+        multipart_chunksize=chunk_mb * 1024 * 1024,
+        max_concurrency=int(current_app.config.get("S3_MAX_CONCURRENCY", 4)),
+        use_threads=True,
+    )
+
+def _sanitize_suffix(suffix: str) -> str:
+    """
+    Ensure the S3 prefix is always under 'LARS/', with a trailing slash.
+    UI supplies only the suffix; 'LARS/' root is enforced here.
+    """
+    base = "LARS/"
+    suffix = (suffix or "").strip()
+    suffix = suffix.lstrip("/").rstrip("/")
+    return base if not suffix else f"{base}{suffix}/"
+
+def _content_type_for(name: str) -> str | None:
+    if name.endswith(".jar"):
+        return "application/java-archive"
+    if name.endswith(".txt"):
+        return "text/plain"
+    return None
+
+def _get_grid_installer_version_any(any_base: str) -> str | None:
+    """
+    any_base like: https://.../Landmark/<stream>/<build>/Any
+    Fetch pom.properties under grid-installer.jar and parse version=...
+    """
+    url = (
+        any_base.rstrip("/")
+        + "/grid-installer.jar/META-INF/maven/grid.runtime/installer-code/pom.properties"
+    )
+    try:
+        r = _uploader_session.get(url, timeout=30)
+        r.raise_for_status()
+        for line in r.text.splitlines():
+            if line.startswith("version="):
+                return line.split("=", 1)[1].strip()
+    except Exception:
+        current_app.logger.exception("grid pom.properties fetch failed: %s", url)
+    return None
+
+def _stream_to_s3_from_url(url: str, bucket: str, key: str, *, metadata: dict | None = None):
+    """
+    Stream the LARS artifact directly to S3 (no temp files).
+    """
+    s3 = _s3_client()
+    extra = {}
+    if metadata:
+        extra["Metadata"] = metadata
+
+    # Optional SSE from config if you use it
+    sse = current_app.config.get("S3_SSE")
+    if sse:
+        extra["ServerSideEncryption"] = sse  # 'AES256' or 'aws:kms'
+        kms = current_app.config.get("S3_KMS_KEY_ID")
+        if sse == "aws:kms" and kms:
+            extra["SSEKMSKeyId"] = kms
+
+    ctype = _content_type_for(key)
+    if ctype:
+        extra["ContentType"] = ctype
+
+    with _uploader_session.get(url, stream=True, timeout=60) as resp:
+        resp.raise_for_status()
+        s3.upload_fileobj(
+            Fileobj=resp.raw,
+            Bucket=bucket,
+            Key=key,
+            ExtraArgs=extra,
+            Config=_s3_transfer_config(),
+        )
+
+def plan_artifacts(app_name: str, stream: str, build_version: str, *, suffix_prefix: str) -> list[dict]:
+    """
+    Build the upload plan for the given selection, per your rules.
+    Returns items: {source_url, bucket, key, metadata}
+    S3 layout: s3://migops/LARS/<suffix>/<APP>/<stream>/<build>/<filename>
+    """
+    bucket = current_app.config.get("S3_BUCKET", "migops")
+    base_prefix = _sanitize_suffix(suffix_prefix)
+    s3_dir = f"{base_prefix}{app_name}/{stream}/{build_version}/"
+
+    base_landmark = current_app.config.get("LARS_BASE_URL", "https://builds.lawson.com/lars/util/get").rstrip("/")
+
+    plan: list[dict] = []
+
+    if app_name in ("MIG", "HCM", "IEFin"):
+        # Source: /<app>/<stream>/<build>/Landmark/
+        src_base = f"{base_landmark}/{app_name}/{stream}/{build_version}/Landmark"
+
+        if app_name == "MIG":
+            # scripts.jar -> MIG_scripts.jar (no metadata)
+            plan.append({
+                "source_url": f"{src_base}/scripts.jar",
+                "bucket": bucket,
+                "key": f"{s3_dir}MIG_scripts.jar",
+                "metadata": None,
+            })
+            # Install-LMMIG.jar with metadata
+            plan.append({
+                "source_url": f"{src_base}/Install-LMMIG.jar",
+                "bucket": bucket,
+                "key": f"{s3_dir}Install-LMMIG.jar",
+                "metadata": {"version": build_version},
+            })
+
+        elif app_name == "HCM":
+            plan.append({
+                "source_url": f"{src_base}/Install-LMHCM.jar",
+                "bucket": bucket,
+                "key": f"{s3_dir}Install-LMHCM.jar",
+                "metadata": {"version": build_version},
+            })
+
+        elif app_name == "IEFin":
+            plan.append({
+                "source_url": f"{src_base}/Install-LMIEFIN.jar",
+                "bucket": bucket,
+                "key": f"{s3_dir}Install-LMIEFIN.jar",
+                "metadata": {"version": build_version},
+            })
+
+    elif app_name == "Landmark":
+        # Source: /Landmark/<stream>/<build>/Any/
+        any_base = f"{base_landmark}/Landmark/{stream}/{build_version}/Any"
+
+        plan.append({
+            "source_url": f"{any_base}/LANDMARK.jar",
+            "bucket": bucket,
+            "key": f"{s3_dir}LANDMARK.jar",
+            "metadata": None,
+        })
+        grid_ver = _get_grid_installer_version_any(any_base)
+        plan.append({
+            "source_url": f"{any_base}/grid-installer.jar",
+            "bucket": bucket,
+            "key": f"{s3_dir}grid-installer.jar",
+            "metadata": ({"version": grid_ver} if grid_ver else None),
+        })
+        plan.append({
+            "source_url": f"{any_base}/mt_dependencies.txt",
+            "bucket": bucket,
+            "key": f"{s3_dir}mt_dependencies.txt",
+            "metadata": None,
+        })
+
+    return plan
+
+def upload_plan(plan: list[dict]) -> list[dict]:
+    """
+    Execute uploads; return [{source_url, bucket, key, ok, error?}]
+    """
+    results = []
+    for item in plan:
+        url = item["source_url"]
+        bucket = item["bucket"]
+        key = item["key"]
+        try:
+            _stream_to_s3_from_url(url, bucket, key, metadata=item.get("metadata"))
+            results.append({"source_url": url, "bucket": bucket, "key": key, "ok": True})
+        except Exception as e:
+            current_app.logger.exception("upload failed: %s -> s3://%s/%s", url, bucket, key)
+            results.append({"source_url": url, "bucket": bucket, "key": key, "ok": False, "error": str(e)})
+    return results

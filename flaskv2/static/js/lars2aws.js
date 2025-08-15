@@ -177,3 +177,63 @@
     updateFull();
   });
 })();
+
+$(function () {
+  const $form = $('#lars2awsForm');
+  const $submit = $form.find('button[type="submit"]');
+
+  function renderResults(payload) {
+    const $zone = $('#l2a-alerts');
+    if (!payload || payload.ok === undefined) {
+      $zone.html('<div class="alert alert-danger">Unexpected server response.</div>');
+      return;
+    }
+    if (!payload.results || !payload.results.length) {
+      $zone.html('<div class="alert alert-warning">No uploads were performed.</div>');
+      return;
+    }
+    const rows = payload.results.map(r => {
+      const status = r.ok ? '✅' : '❌';
+      const key = `s3://${r.bucket}/${r.key}`;
+      const src = r.source_url;
+      const err = r.ok ? '' : `<div class="small text-danger">${r.error || ''}</div>`;
+      return `<li class="mb-1">${status} <code>${key}</code><br><span class="small text-muted">${src}</span>${err}</li>`;
+    }).join('');
+    const summary = payload.ok ? 'All uploads succeeded.' : 'Some uploads failed.';
+    $zone.html(`
+      <div class="alert ${payload.ok ? 'alert-success' : 'alert-warning'}">
+        <div class="fw-semibold mb-2">${summary}</div>
+        <ul class="mb-0 ps-3">${rows}</ul>
+      </div>
+    `);
+  }
+
+  $form.on('submit', function (e) {
+    e.preventDefault();
+    $('#l2a-alerts').html(`
+      <div class="alert alert-info">
+        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+        Uploading... This may take a while for large artifacts.
+      </div>
+    `);
+    $submit.prop('disabled', true);
+
+    const formData = new FormData(this);
+    $.ajax({
+      url: '/lars2aws/upload',
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false
+    })
+    .done(renderResults)
+    .fail(xhr => {
+      const msg = (xhr.responseJSON && xhr.responseJSON.message) || xhr.statusText || 'Upload failed.';
+      $('#l2a-alerts').html(`<div class="alert alert-danger">${msg}</div>`);
+    })
+    .always(() => {
+      $submit.prop('disabled', false);
+    });
+  });
+});
+

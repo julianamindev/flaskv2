@@ -5,7 +5,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, get_app_data, get_builds_for_app_stream, get_streams_for_app, stream_exists_live
+from flaskv2.utils.helpers import _get_envnum, _paginate, get_app_data, get_builds_for_app_stream, get_streams_for_app, plan_artifacts, stream_exists_live, upload_plan
 
 main = Blueprint('main', __name__)
 
@@ -148,6 +148,48 @@ def check_session():
             return redirect(url_for('users.login'))
 
     return '', 204  # still valid; no noise
+
+
+@main.post("/lars2aws/upload")
+@login_required
+def lars2aws_upload():
+    """
+    Upload selected artifacts from LARS to S3.
+    Expects form POST with:
+      - summary_<app>_stream
+      - summary_<app>_build
+      - migops_lars_suffix  (UI suffix after 'LARS/')
+    Returns JSON with per-file results.
+    """
+    apps = current_app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])
+    suffix = (request.form.get("migops_lars_suffix") or "").strip()
+    # Hard-enforce LARS/ root in helper; suffix may be blank -> 'LARS/'
+    all_results = []
+    any_selected = False
+
+    for app_name in apps:
+        s = request.form.get(f"summary_{app_name.lower()}_stream") or ""
+        b = request.form.get(f"summary_{app_name.lower()}_build") or ""
+        s, b = s.strip(), b.strip()
+        if not s or not b:
+            continue
+        any_selected = True
+
+        # Build plan and upload
+        plan = plan_artifacts(app_name, s, b, suffix_prefix=suffix)
+        current_app.app_log.info(
+            "upload plan: user=%s app=%s stream=%s build=%s count=%d",
+            getattr(getattr(request, "user", None), "username", "-"),
+            app_name, s, b, len(plan)
+        )
+        results = upload_plan(plan)
+        all_results.extend([{"app": app_name, "stream": s, "build": b, **r} for r in results])
+
+    if not any_selected:
+        return jsonify({"ok": False, "message": "No app selections found.", "results": []}), 400
+
+    ok = all(r.get("ok") for r in all_results) if all_results else False
+    return jsonify({"ok": ok, "results": all_results})
 
 
 # @main.route("/__audit_test")
