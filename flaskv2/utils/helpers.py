@@ -76,8 +76,7 @@ def get_streams_for_app(app_name: str) -> list[str]:
         if app_name == "MIG":
             if (
                 lo == "mainline"
-                or lo.startswith(("int", "hotfix", "rel_"))
-                or "feature" in lo          # MIG often uses ..._Feature at the end
+                or lo.startswith(("int", "hotfix", "rel_", "feature"))
             ):
                 out.append(val)
         else:
