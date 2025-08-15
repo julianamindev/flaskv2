@@ -90,6 +90,24 @@ def api_builds():
 
     return jsonify({"results": results, "pagination": {"more": more}})
 
+@main.get("/api/streams/exists")
+@login_required
+def api_stream_exists():
+    app_name = request.args.get("app", "")
+    stream   = (request.args.get("stream") or "").strip()
+    if not app_name or not stream:
+        return jsonify({"exists": False, "error": "missing app/stream"}), 400
+
+    if _get_envnum() == 1:
+        app_data = get_app_data()
+        streams = list((app_data.get(app_name) or {}).keys())
+    else:
+        streams = get_streams_for_app(app_name)
+
+    # case-insensitive exact match; return canonical casing if found
+    canonical = next((s for s in streams if s.lower() == stream.lower()), None)
+    return jsonify({"exists": bool(canonical), "stream": canonical})
+
 @main.route("/list")
 @login_required
 def user_list():
