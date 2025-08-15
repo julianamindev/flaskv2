@@ -382,3 +382,23 @@ def upload_plan(plan: list[dict]) -> list[dict]:
             current_app.logger.exception("upload failed: %s -> s3://%s/%s", url, bucket, key)
             results.append({"source_url": url, "bucket": bucket, "key": key, "ok": False, "error": str(e)})
     return results
+
+def upload_item(item: dict) -> dict:
+    """
+    Upload exactly one artifact.
+    item: {"source_url": str, "bucket": str, "key": str, "metadata": dict|None}
+    Returns: {"ok": bool, "source_url":..., "bucket":..., "key":..., "error"?: str}
+    """
+    url = item.get("source_url")
+    bucket = item.get("bucket")
+    key = item.get("key")
+    meta = item.get("metadata")
+    if not url or not bucket or not key:
+      return {"ok": False, "error": "missing source_url/bucket/key", "source_url": url, "bucket": bucket, "key": key}
+    try:
+        _stream_to_s3_from_url(url, bucket, key, metadata=meta)
+        return {"ok": True, "source_url": url, "bucket": bucket, "key": key}
+    except Exception as e:
+        current_app.logger.exception("upload failed: %s -> s3://%s/%s", url, bucket, key)
+        return {"ok": False, "source_url": url, "bucket": bucket, "key": key, "error": str(e)}
+

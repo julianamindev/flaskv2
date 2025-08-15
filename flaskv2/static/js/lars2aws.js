@@ -178,15 +178,16 @@
   });
 })();
 
-
+// 
 
 $(function () {
   const $form = $('#lars2awsForm');
   const $submit = $form.find('button[type="submit"]');
   const $alerts = $('#l2a-alerts');
 
+  const csrf = $form.find('input[name="csrf_token"]').val() || null;
+
   function flash(type, html) {
-    // type: 'success' | 'info' | 'warning' | 'danger'
     $alerts.html(`
       <div class="alert alert-${type} alert-dismissible fade show" role="alert">
         ${html}
@@ -195,50 +196,97 @@ $(function () {
     `);
   }
 
-  function renderResults(payload) {
-    if (!payload || payload.ok === undefined) {
-      flash('danger', 'Unexpected server response.');
-      return;
-    }
-    if (!payload.results || !payload.results.length) {
-      flash('warning', 'No uploads were performed.');
-      return;
-    }
-    const rows = payload.results.map(r => {
-      const status = r.ok ? '✅' : '❌';
-      const key = `s3://${r.bucket}/${r.key}`;
-      const src = r.source_url;
-      const err = r.ok ? '' : `<div class="small text-danger">${r.error || ''}</div>`;
-      return `<li class="mb-1">${status} <code>${key}</code><br><span class="small text-muted">${src}</span>${err}</li>`;
+  function renderUploading(prefix, items) {
+    const lis = items.map((it, i) => {
+      const key = `s3://${it.bucket}/${it.key}`;
+      return `
+        <li id="upl-${i}" class="mb-1">
+          <span class="me-2" data-role="icon">⏳</span>
+          <code>${key}</code>
+          <div class="small text-muted">${it.source_url}</div>
+          <div class="small" data-role="msg"></div>
+        </li>`;
     }).join('');
-    const summary = payload.ok ? 'All uploads succeeded.' : 'Some uploads failed.';
-    flash(payload.ok ? 'success' : 'warning', `
-      <div class="fw-semibold mb-2">${summary}</div>
-      <ul class="mb-0 ps-3">${rows}</ul>
+    flash('info', `
+      <div class="fw-semibold mb-2">Uploading to <code>${prefix}</code></div>
+      <ul class="mb-0 ps-3">${lis}</ul>
+    `);
+  }
+
+  async function uploadSequential(items) {
+    let allOk = true;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const $row = $(`#upl-${i}`);
+      const $icon = $row.find('[data-role="icon"]');
+      const $msg = $row.find('[data-role="msg"]');
+
+      // show "uploading ..." message
+      $icon.text('⬆️');
+      $msg.text('Uploading...');
+
+      try {
+        const res = await $.ajax({
+          url: '/lars2aws/upload-item',
+          method: 'POST',
+          data: JSON.stringify({
+            source_url: it.source_url,
+            bucket: it.bucket,
+            key: it.key,
+            metadata: it.metadata || null
+          }),
+          contentType: 'application/json',
+          headers: csrf ? {'X-CSRFToken': csrf} : {}
+        });
+        // success
+        $icon.text('✅');
+        $msg.text('Done');
+      } catch (xhr) {
+        allOk = false;
+        $icon.text('❌');
+        const err = (xhr.responseJSON && xhr.responseJSON.error) || xhr.statusText || 'Upload failed';
+        $msg.addClass('text-danger').text(err);
+      }
+    }
+    // Replace info alert with final status (but keep the list)
+    const html = $alerts.find('.alert').html();
+    const body = html.replace(/class="alert alert-info/, `class="alert alert-${allOk ? 'success' : 'warning'}`);
+    $alerts.html(`
+      <div class="alert alert-${allOk ? 'success' : 'warning'} alert-dismissible fade show" role="alert">
+        <div class="fw-semibold mb-2">${allOk ? 'All uploads succeeded.' : 'Some uploads failed.'}</div>
+        ${$('<div>').html(body).find('ul').prop('outerHTML')}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
     `);
   }
 
   $form.on('submit', function (e) {
     e.preventDefault();
-
-    // show spinner while uploading — also dismissible
-    flash('info', `
-      <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-      Uploading... This may take a while for large artifacts.
-    `);
     $submit.prop('disabled', true);
 
     const formData = new FormData(this);
+
+    // Step 1: build plan
     $.ajax({
-      url: '/lars2aws/upload',
+      url: '/lars2aws/plan',
       method: 'POST',
       data: formData,
       processData: false,
       contentType: false
     })
-    .done(renderResults)
+    .done(payload => {
+      if (!payload || !payload.ok || !payload.artifacts || !payload.artifacts.length) {
+        const msg = (payload && payload.message) || 'No artifacts to upload.';
+        flash('warning', msg);
+        return;
+      }
+      // Step 2: show live list + target prefix
+      renderUploading(payload.s3_prefix, payload.artifacts);
+      // Step 3: upload sequentially
+      uploadSequential(payload.artifacts);
+    })
     .fail(xhr => {
-      const msg = (xhr.responseJSON && xhr.responseJSON.message) || xhr.statusText || 'Upload failed.';
+      const msg = (xhr.responseJSON && xhr.responseJSON.message) || xhr.statusText || 'Plan failed.';
       flash('danger', msg);
     })
     .always(() => {
@@ -246,5 +294,6 @@ $(function () {
     });
   });
 });
+
 
 

@@ -5,7 +5,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, get_app_data, get_builds_for_app_stream, get_streams_for_app, plan_artifacts, stream_exists_live, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, get_app_data, get_builds_for_app_stream, get_streams_for_app, plan_artifacts, stream_exists_live, upload_item, upload_plan
 
 main = Blueprint('main', __name__)
 
@@ -190,6 +190,50 @@ def lars2aws_upload():
 
     ok = all(r.get("ok") for r in all_results) if all_results else False
     return jsonify({"ok": ok, "results": all_results})
+
+@main.post("/lars2aws/plan")
+@login_required
+def lars2aws_plan():
+    """
+    Build the flattened upload plan using current form selections.
+    Responds with: { ok, s3_prefix, artifacts: [{app, stream, build, source_url, bucket, key, metadata?}] }
+    """
+    apps = current_app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])
+    suffix = (request.form.get("migops_lars_suffix") or "").strip()
+    s3_prefix = f"s3://{current_app.config.get('S3_BUCKET','migops')}/{_sanitize_suffix(suffix)}"
+
+    artifacts = []
+    any_selected = False
+    for app_name in apps:
+        s = (request.form.get(f"summary_{app_name.lower()}_stream") or "").strip()
+        b = (request.form.get(f"summary_{app_name.lower()}_build") or "").strip()
+        if not s or not b:
+            continue
+        any_selected = True
+        plan = plan_artifacts(app_name, s, b, suffix_prefix=suffix)
+        for it in plan:
+            artifacts.append({
+                "app": app_name,
+                "stream": s,
+                "build": b,
+                **it,  # source_url, bucket, key, metadata
+            })
+
+    if not any_selected:
+        return jsonify({"ok": False, "message": "No app selections found.", "artifacts": []}), 400
+
+    return jsonify({"ok": True, "s3_prefix": s3_prefix, "artifacts": artifacts})
+
+@main.post("/lars2aws/upload-item")
+@login_required
+def lars2aws_upload_item():
+    """
+    Upload a single artifact (JSON body).
+    Requires: {source_url, bucket, key, metadata?}
+    """
+    data = request.get_json(silent=True) or {}
+    result = upload_item(data)
+    return jsonify(result), (200 if result.get("ok") else 502)
 
 
 # @main.route("/__audit_test")
