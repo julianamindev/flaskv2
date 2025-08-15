@@ -283,13 +283,23 @@ def _stream_to_s3_from_url(url: str, bucket: str, key: str, *, metadata: dict | 
 
 def plan_artifacts(app_name: str, stream: str, build_version: str, *, suffix_prefix: str) -> list[dict]:
     """
-    Build the upload plan for the given selection, per your rules.
-    Returns items: {source_url, bucket, key, metadata}
-    S3 layout: s3://migops/LARS/<suffix>/<APP>/<stream>/<build>/<filename>
+    Build the upload plan per your rules, FLAT into:
+      s3://<bucket>/LARS/<suffix>/
+    Filenames:
+      MIG -> MIG_scripts.jar, Install-LMMIG.jar
+      HCM -> Install-LMHCM.jar
+      IEFin -> Install-LMIEFIN.jar
+      Landmark -> LANDMARK.jar, grid-installer.jar, mt_dependencies.txt
+    Metadata:
+      - Install-LMMIG/HCM/IEFIN: {'version': <build>}
+      - grid-installer.jar: {'version': <grid_version from pom.properties>}
+      - Others: no metadata
     """
     bucket = current_app.config.get("S3_BUCKET", "migops")
-    base_prefix = _sanitize_suffix(suffix_prefix)
-    s3_dir = f"{base_prefix}{app_name}/{stream}/{build_version}/"
+
+    # Enforce 'LARS/<suffix>/' as the only prefix
+    base_prefix = _sanitize_suffix(suffix_prefix)  # e.g. 'LARS/flaskv2_test/'
+    s3_dir = base_prefix  # <-- FLAT: no app/stream/build subfolders
 
     base_landmark = current_app.config.get("LARS_BASE_URL", "https://builds.lawson.com/lars/util/get").rstrip("/")
 
@@ -300,14 +310,12 @@ def plan_artifacts(app_name: str, stream: str, build_version: str, *, suffix_pre
         src_base = f"{base_landmark}/{app_name}/{stream}/{build_version}/Landmark"
 
         if app_name == "MIG":
-            # scripts.jar -> MIG_scripts.jar (no metadata)
             plan.append({
                 "source_url": f"{src_base}/scripts.jar",
                 "bucket": bucket,
-                "key": f"{s3_dir}MIG_scripts.jar",
+                "key": f"{s3_dir}MIG_scripts.jar",          # renamed
                 "metadata": None,
             })
-            # Install-LMMIG.jar with metadata
             plan.append({
                 "source_url": f"{src_base}/Install-LMMIG.jar",
                 "bucket": bucket,
@@ -339,7 +347,7 @@ def plan_artifacts(app_name: str, stream: str, build_version: str, *, suffix_pre
             "source_url": f"{any_base}/LANDMARK.jar",
             "bucket": bucket,
             "key": f"{s3_dir}LANDMARK.jar",
-            "metadata": None,
+            "metadata": {"version": build_version},
         })
         grid_ver = _get_grid_installer_version_any(any_base)
         plan.append({
@@ -356,6 +364,7 @@ def plan_artifacts(app_name: str, stream: str, build_version: str, *, suffix_pre
         })
 
     return plan
+
 
 def upload_plan(plan: list[dict]) -> list[dict]:
     """

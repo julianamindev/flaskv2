@@ -178,18 +178,30 @@
   });
 })();
 
+
+
 $(function () {
   const $form = $('#lars2awsForm');
   const $submit = $form.find('button[type="submit"]');
+  const $alerts = $('#l2a-alerts');
+
+  function flash(type, html) {
+    // type: 'success' | 'info' | 'warning' | 'danger'
+    $alerts.html(`
+      <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+        ${html}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    `);
+  }
 
   function renderResults(payload) {
-    const $zone = $('#l2a-alerts');
     if (!payload || payload.ok === undefined) {
-      $zone.html('<div class="alert alert-danger">Unexpected server response.</div>');
+      flash('danger', 'Unexpected server response.');
       return;
     }
     if (!payload.results || !payload.results.length) {
-      $zone.html('<div class="alert alert-warning">No uploads were performed.</div>');
+      flash('warning', 'No uploads were performed.');
       return;
     }
     const rows = payload.results.map(r => {
@@ -200,21 +212,19 @@ $(function () {
       return `<li class="mb-1">${status} <code>${key}</code><br><span class="small text-muted">${src}</span>${err}</li>`;
     }).join('');
     const summary = payload.ok ? 'All uploads succeeded.' : 'Some uploads failed.';
-    $zone.html(`
-      <div class="alert ${payload.ok ? 'alert-success' : 'alert-warning'}">
-        <div class="fw-semibold mb-2">${summary}</div>
-        <ul class="mb-0 ps-3">${rows}</ul>
-      </div>
+    flash(payload.ok ? 'success' : 'warning', `
+      <div class="fw-semibold mb-2">${summary}</div>
+      <ul class="mb-0 ps-3">${rows}</ul>
     `);
   }
 
   $form.on('submit', function (e) {
     e.preventDefault();
-    $('#l2a-alerts').html(`
-      <div class="alert alert-info">
-        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-        Uploading... This may take a while for large artifacts.
-      </div>
+
+    // show spinner while uploading — also dismissible
+    flash('info', `
+      <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+      Uploading... This may take a while for large artifacts.
     `);
     $submit.prop('disabled', true);
 
@@ -229,11 +239,12 @@ $(function () {
     .done(renderResults)
     .fail(xhr => {
       const msg = (xhr.responseJSON && xhr.responseJSON.message) || xhr.statusText || 'Upload failed.';
-      $('#l2a-alerts').html(`<div class="alert alert-danger">${msg}</div>`);
+      flash('danger', msg);
     })
     .always(() => {
       $submit.prop('disabled', false);
     });
   });
 });
+
 
