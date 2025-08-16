@@ -296,4 +296,47 @@ $(function () {
 });
 
 
+// ---- Clear fields: reset all tabs + summary + path ----
+(function () {
+  function clearApp(app) {
+    const key = app.toLowerCase();
+    const $stream = $(`#${key}-stream`);
+    const $build  = $(`#${key}-build`);
+    const $manualToggle = $(`#${key}-manual-toggle`);
+    const $manualWrap   = $(`#${key}-manual-stream-wrap`);
+    const $manualInput  = $(`#${key}-manual-input`);
 
+    // Exit manual stream mode if on
+    if ($manualToggle.length && $manualToggle.is(':checked')) {
+      $manualToggle.prop('checked', false).trigger('change');
+    }
+    $manualWrap.addClass('d-none');
+    $manualInput.val('');
+
+    // Clear Select2s
+    $stream.val(null).trigger('change');
+    $build.val(null).trigger('change');
+
+    // Clear summary + hidden fields
+    $(`#summary-${key}`).val('');
+    $(`#hidden-${key}-stream`).val('');
+    $(`#hidden-${key}-build`).val('');
+  }
+
+  function clearAllSelections() {
+    const APPS = (window.L2A && window.L2A.APPS) || [];
+    APPS.forEach(clearApp);
+
+    // Reset S3 destination suffix + hidden full path
+    const PREFIX = 'migops/LARS/';
+    $('#migops-lars-input').val('');
+    $('#migops-lars-path').val(PREFIX);
+  }
+
+  $(function () {
+    $('#clear-selections').on('click', function (e) {
+      e.preventDefault();
+      clearAllSelections();
+    });
+  });
+})();
