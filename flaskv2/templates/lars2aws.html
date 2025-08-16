@@ -11,10 +11,8 @@
 <main>
   <div class="container-fluid px-2 px-md-3 pt-4">
 
-    <h1 class="h3 mb-3">LARS → AWS</h1>
-
-    <!-- inline alert area -->
-    <div id="l2a-alerts"></div>
+  <!-- inline alert area -->
+  <div id="l2a-alerts"></div>
 
   {# Title row + help toggle #}
   <div class="d-flex justify-content-between align-items-center mb-2">
@@ -38,8 +36,8 @@
       <ul class="mb-0">
         <li>Pick a <b>Stream</b>, then choose a <b>Build</b> (lists load on demand).</li>
         <li>If your stream isn’t listed, toggle <b>Manual stream</b>, type the exact name, then click <b>Use stream</b>.</li>
-        <li><b>Autofill SR Releases</b> fills all apps with the current month’s releases (MIG uses latest <b>B</b>, others latest <b>R</b>), and sets S3 suffix to <code>MT/&lt;MMM&gt;</code>.</li>
-        <li>Review the selected builds, set the S3 destination suffix, then <b>Upload to S3</b>.</li>
+        <li><b>Autofill SR Releases</b> fills all apps with the current month’s releases (MIG uses latest <b>Built</b>, others latest <b>Released</b> maturity), and sets the S3 destination to <code>MT/&lt;MMM&gt;</code>.</li>
+        <li>Review the selected builds, set the S3 destination suffix (if you haven't chosen autofill), then <b>Upload to S3</b>.</li>
       </ul>
     </div>
   </div>
