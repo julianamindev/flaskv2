@@ -16,14 +16,34 @@
     <!-- inline alert area -->
     <div id="l2a-alerts"></div>
 
-    <div class="alert alert-info mb-4" role="alert">
+  {# Title row + help toggle #}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h1 class="h3 mb-0">LARS → AWS</h1>
+
+    <button type="button"
+            class="btn btn-outline-info btn-sm"
+            id="howitworks-btn"
+            data-bs-toggle="collapse"
+            data-bs-target="#howitworks"
+            aria-expanded="false"
+            aria-controls="howitworks">
+      How it works
+    </button>
+  </div>
+
+  {# Collapsible help (hidden by default) #}
+  <div class="collapse" id="howitworks">
+    <div class="alert alert-info mb-3">
       <div class="fw-semibold mb-1">How it works</div>
       <ul class="mb-0">
         <li>Pick a <b>Stream</b>, then choose a <b>Build</b> (lists load on demand).</li>
-        <li>If your stream isn’t listed, toggle <b>Manual stream</b>, enter the exact stream name, and click <b>Use stream</b>. We’ll validate it against LARS and then load its builds.</li>
-        <li>Review the selected builds below, set the S3 destination suffix, then <b>Upload to S3</b>.</li>
+        <li>If your stream isn’t listed, toggle <b>Manual stream</b>, type the exact name, then click <b>Use stream</b>.</li>
+        <li><b>Autofill SR Releases</b> fills all apps with the current month’s releases (MIG uses latest <b>B</b>, others latest <b>R</b>), and sets S3 suffix to <code>MT/&lt;MMM&gt;</code>.</li>
+        <li>Review the selected builds, set the S3 destination suffix, then <b>Upload to S3</b>.</li>
       </ul>
     </div>
+  </div>
+
 
     <!-- Tabs -->
     <ul class="nav nav-tabs tabs-accent" id="appsTab" role="tablist">

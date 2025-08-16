@@ -483,3 +483,11 @@ $(function () {
   });
 })();
 
+// Help toggle button label
+$(function () {
+  const $btn = $('#howitworks-btn');
+  $('#howitworks')
+    .on('shown.bs.collapse', () => $btn.text('Hide help'))
+    .on('hidden.bs.collapse', () => $btn.text('How it works'));
+});
+
