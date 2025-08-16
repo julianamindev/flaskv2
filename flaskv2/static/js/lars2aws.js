@@ -22,7 +22,6 @@
     const $manualInput    = $(`#${key}-manual-input`);
     const $manualValidate = $(`#${key}-manual-validate`);
 
-    // Which stream is currently active?
     function effectiveStream() {
       if ($manualToggle.is(':checked')) return ($manualInput.val() || '').trim();
       return $stream.val() || '';
@@ -48,7 +47,7 @@
       dropdownParent: $pane
     });
 
-    // BUILDS (always enabled; pulls from effectiveStream)
+    // BUILDS (enabled; uses effective stream)
     $build.prop('disabled', false).select2({
       width: '100%',
       allowClear: true,
@@ -59,8 +58,6 @@
         dataType: 'json',
         delay: 250,
         cache: true,
-
-        // Validate manual stream (if any) before hitting /api/builds
         transport: function (params, success, failure) {
           const sid = effectiveStream();
           if (!sid) { success({ results: [], pagination: { more: false } }); return; }
@@ -73,7 +70,6 @@
                   success({ results: [], pagination: { more: false } });
                   return;
                 }
-                // Update manual text with canonical casing
                 if (stream && stream !== sid) $manualInput.val(stream);
                 $.ajax(params).then(success, failure);
               })
@@ -83,19 +79,14 @@
               });
             return;
           }
-
-          // Normal mode
           return $.ajax(params).then(success, failure);
         },
-
-        // Always send the effective stream
         data: params => ({
           app,
           stream_id: effectiveStream(),
           q: params.term || '',
           page: params.page || 1
         }),
-
         processResults: data => ({
           results: data.results || [],
           pagination: { more: data.pagination && data.pagination.more }
@@ -112,14 +103,14 @@
       $(`#hidden-${key}-build`).val(buildVal || '');
     }
 
-    // Stream (normal) changes: clear build selection
-    $stream.on('select2:select select2:clear', () => {
+    // Stream changes: clear build selection
+    $stream.on('select2:select select2:clear change', () => {
       $build.val(null).trigger('change');
       setSummary('');
     });
 
-    // Builds change: update summary
-    $build.on('select2:select select2:clear', () => {
+    // Build changes: update summary  (listen to 'change' too for programmatic selections)
+    $build.on('select2:select select2:clear change', () => {
       setSummary($build.val() || '');
     });
 
@@ -141,7 +132,6 @@
     }
     $manualToggle.on('change', function () { enterManual(this.checked); });
 
-    // Optional: "Use stream" button to set into stream Select2 (nice UX)
     function validateAndApplyManualStream() {
       const sid = ($manualInput.val() || '').trim();
       if (!sid) return;
@@ -160,9 +150,7 @@
         .fail(() => showAlert('Unable to validate stream right now.', 'danger'));
     }
     $manualValidate.on('click', validateAndApplyManualStream);
-    $manualInput.on('keypress', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); validateAndApplyManualStream(); }
-    });
+    $manualInput.on('keypress', function (e) { if (e.key === 'Enter') { e.preventDefault(); validateAndApplyManualStream(); } });
   }
 
   $(function () {
@@ -178,8 +166,8 @@
   });
 })();
 
-// 
 
+// ===== Submit flow (plan → live list → sequential uploads) =====
 $(function () {
   const $form = $('#lars2awsForm');
   const $submit = $form.find('button[type="submit"]');
@@ -221,12 +209,11 @@ $(function () {
       const $icon = $row.find('[data-role="icon"]');
       const $msg = $row.find('[data-role="msg"]');
 
-      // show "uploading ..." message
       $icon.text('⬆️');
       $msg.text('Uploading...');
 
       try {
-        const res = await $.ajax({
+        await $.ajax({
           url: '/lars2aws/upload-item',
           method: 'POST',
           data: JSON.stringify({
@@ -238,7 +225,6 @@ $(function () {
           contentType: 'application/json',
           headers: csrf ? {'X-CSRFToken': csrf} : {}
         });
-        // success
         $icon.text('✅');
         $msg.text('Done');
       } catch (xhr) {
@@ -248,7 +234,6 @@ $(function () {
         $msg.addClass('text-danger').text(err);
       }
     }
-    // Replace info alert with final status (but keep the list)
     const html = $alerts.find('.alert').html();
     const body = html.replace(/class="alert alert-info/, `class="alert alert-${allOk ? 'success' : 'warning'}`);
     $alerts.html(`
@@ -266,7 +251,6 @@ $(function () {
 
     const formData = new FormData(this);
 
-    // Step 1: build plan
     $.ajax({
       url: '/lars2aws/plan',
       method: 'POST',
@@ -280,9 +264,7 @@ $(function () {
         flash('warning', msg);
         return;
       }
-      // Step 2: show live list + target prefix
       renderUploading(payload.s3_prefix, payload.artifacts);
-      // Step 3: upload sequentially
       uploadSequential(payload.artifacts);
     })
     .fail(xhr => {
@@ -296,7 +278,7 @@ $(function () {
 });
 
 
-// ---- Clear fields: reset all tabs + summary + path ----
+// ---- Clear fields ----
 (function () {
   function clearApp(app) {
     const key = app.toLowerCase();
@@ -306,18 +288,15 @@ $(function () {
     const $manualWrap   = $(`#${key}-manual-stream-wrap`);
     const $manualInput  = $(`#${key}-manual-input`);
 
-    // Exit manual stream mode if on
     if ($manualToggle.length && $manualToggle.is(':checked')) {
       $manualToggle.prop('checked', false).trigger('change');
     }
     $manualWrap.addClass('d-none');
     $manualInput.val('');
 
-    // Clear Select2s
     $stream.val(null).trigger('change');
     $build.val(null).trigger('change');
 
-    // Clear summary + hidden fields
     $(`#summary-${key}`).val('');
     $(`#hidden-${key}-stream`).val('');
     $(`#hidden-${key}-build`).val('');
@@ -327,7 +306,6 @@ $(function () {
     const APPS = (window.L2A && window.L2A.APPS) || [];
     APPS.forEach(clearApp);
 
-    // Reset S3 destination suffix + hidden full path
     const PREFIX = 'migops/LARS/';
     $('#migops-lars-input').val('');
     $('#migops-lars-path').val(PREFIX);
@@ -341,14 +319,15 @@ $(function () {
   });
 })();
 
-// ---- Autofill SR Releases: fill all apps with latest R build for REL_YYYY_MM, set MT/<MMM> ----
+
+// ---- Autofill SR Releases (MIG uses latest 'B', others latest 'R') ----
 (function () {
   const APPS = (window.L2A && window.L2A.APPS) || [];
 
-  const monthAbbrev = (d) => d.toLocaleString('en-US', { month: 'short' }).toUpperCase(); // AUG, SEP, ...
+  const monthAbbrev = (d) =>
+    d.toLocaleString('en-US', { month: 'short' }).toUpperCase(); // AUG, SEP, ...
 
   async function fetchStreamExact(app, name) {
-    // Page through /api/streams until we find an exact `name`
     let page = 1;
     while (true) {
       const data = await $.getJSON('/api/streams', { app, q: name, page });
@@ -359,23 +338,19 @@ $(function () {
     }
   }
 
-  async function fetchLatestRBuild(app, streamId) {
-    // Iterate /api/builds pages; choose the build with maturity 'R' and highest release_id
+  async function fetchLatestBuild(app, streamId, wantedCode /* e.g., 'R' or 'B' */) {
     let page = 1;
     let best = null;
 
     const consider = (item) => {
-      // Support both enriched payloads and "TEXT--id" labels
       const maturity = (item.maturity || '').toString().toUpperCase();
       const txt = (item.text || '').trim();
-      const parts = txt.split('--');
-      const code = maturity || (parts[0] || '').trim().toUpperCase();
-
-      if (code !== 'R') return;
+      const code = maturity || (txt.split('--')[0] || '').trim().toUpperCase();
+      if (code !== wantedCode) return;
 
       const idStr = item.release_id != null ? String(item.release_id)
                    : item.id != null ? String(item.id)
-                   : (parts[1] || '').trim();
+                   : (txt.split('--')[1] || '').trim();
       const idNum = parseInt(idStr, 10);
       const rank = Number.isFinite(idNum) ? idNum : idStr;
 
@@ -402,31 +377,30 @@ $(function () {
     if ($select.find(`option[value="${val}"]`).length === 0) {
       $select.append(new Option(text, val, true, true));
     }
-    $select.val(val).trigger('change');
+    $select.val(val).trigger('change'); // triggers our 'change' listeners
   }
 
   async function autofillSR() {
     try {
       const now = new Date();
       const year = now.getFullYear();
-      const mm   = String(now.getMonth() + 1).padStart(2, '0'); // 01..12
+      const mm   = String(now.getMonth() + 1).padStart(2, '0');
       const rel  = `REL_${year}_${mm}`;
-      const mmm  = monthAbbrev(now); // e.g., AUG
+      const mmm  = monthAbbrev(now);
 
-      // 1) MIG must have this stream or we abort
+      // MIG required
       const migStream = await fetchStreamExact('MIG', rel);
       if (!migStream) {
         showAlert(`Required MIG stream <b>${rel}</b> is not available for this month.`, 'danger');
         return;
       }
 
-      // 2) For every app, set stream to REL_YYYY_MM and pick latest R build
       for (const app of APPS) {
         const key = app.toLowerCase();
         const $stream = $(`#${key}-stream`);
         const $build  = $(`#${key}-build`);
 
-        // Turn off manual stream mode if on
+        // disable manual stream mode if active
         const $manualToggle = $(`#${key}-manual-toggle`);
         const $manualWrap   = $(`#${key}-manual-stream-wrap`);
         const $manualInput  = $(`#${key}-manual-input`);
@@ -436,22 +410,30 @@ $(function () {
         $manualWrap.addClass('d-none');
         $manualInput.val('');
 
-        // Use MIG's found stream for MIG; search exact for others
+        // stream per app
         const stream = app === 'MIG' ? migStream : await fetchStreamExact(app, rel);
         if (!stream) continue;
 
-        // Select the stream
+        // select stream
         setSelect2Value($stream, stream);
 
-        // Fetch & pick the latest Release-maturity (R) build
-        const rBuild = await fetchLatestRBuild(app, stream.id);
-        if (!rBuild) continue;
+        // latest build (MIG='B', others='R')
+        const wanted = app === 'MIG' ? 'B' : 'R';
+        const bestBuild = await fetchLatestBuild(app, stream.id, wanted);
+        if (!bestBuild) continue;
 
-        // Select the build (handlers will update the summary/hidden fields)
-        setSelect2Value($build, rBuild);
+        // select build
+        setSelect2Value($build, bestBuild);
+
+        // explicitly update summary/hidden (programmatic selection)
+        const streamVal = stream.id != null ? stream.id : (stream.text || '');
+        const buildVal  = bestBuild.id != null ? bestBuild.id : (bestBuild.text || '');
+        $(`#summary-${key}`).val(buildVal);
+        $(`#hidden-${key}-stream`).val(streamVal);
+        $(`#hidden-${key}-build`).val(buildVal);
       }
 
-      // 3) Set destination suffix to MT/<MMM> and update hidden full path
+      // S3 suffix: MT/<MMM>
       $('#migops-lars-input').val(`MT/${mmm}`).trigger('input');
 
       showAlert(`Autofilled SR releases for <b>${rel}</b>. You can still adjust any field.`, 'success');
