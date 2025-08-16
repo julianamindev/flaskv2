@@ -69,26 +69,35 @@ def api_builds():
         return jsonify({"results": [], "pagination": {"more": False}}), 400
 
     if _get_envnum() == 1:
-        # DEV: test blob (strings)
+        # DEV: test blob (simple strings). We still add release_id for convenience.
         app_data = get_app_data()
         builds = list((app_data.get(app_name, {}).get(stream_id, [])))
         if q:
             builds = [b for b in builds if q in b.lower()]
         page_items, more = _paginate(builds, page, per_page)
-        results = [{"id": b, "text": b} for b in page_items]
+        results = [
+            {"id": b, "text": b, "maturity": None, "release_id": b}
+            for b in page_items
+        ]
     else:
-        # STG/PRD: live LARS (list of dicts with release_id + code)
+        # STG/PRD: live LARS (dicts with release_id + code)
         all_items = get_builds_for_app_stream(app_name, stream_id)
         if q:
             all_items = [it for it in all_items if q in it["release_id"].lower()]
         page_items, more = _paginate(all_items, page, per_page)
-        # IMPORTANT: id = plain version; text = "CODE--version"
+        # id = release_id; text kept for backwards-compat
         results = [
-            {"id": it["release_id"], "text": f"{it['code']}--{it['release_id']}"}
+            {
+                "id": it["release_id"],
+                "text": f"{it['code']}--{it['release_id']}",
+                "maturity": it["code"],             # e.g., 'R', 'B', 'ST', ...
+                "release_id": it["release_id"],
+            }
             for it in page_items
         ]
 
     return jsonify({"results": results, "pagination": {"more": more}})
+
 
 @main.get("/api/streams/exists")
 @login_required
@@ -150,46 +159,46 @@ def check_session():
     return '', 204  # still valid; no noise
 
 
-@main.post("/lars2aws/upload")
-@login_required
-def lars2aws_upload():
-    """
-    Upload selected artifacts from LARS to S3.
-    Expects form POST with:
-      - summary_<app>_stream
-      - summary_<app>_build
-      - migops_lars_suffix  (UI suffix after 'LARS/')
-    Returns JSON with per-file results.
-    """
-    apps = current_app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])
-    suffix = (request.form.get("migops_lars_suffix") or "").strip()
-    # Hard-enforce LARS/ root in helper; suffix may be blank -> 'LARS/'
-    all_results = []
-    any_selected = False
+# @main.post("/lars2aws/upload")
+# @login_required
+# def lars2aws_upload():
+#     """
+#     Upload selected artifacts from LARS to S3.
+#     Expects form POST with:
+#       - summary_<app>_stream
+#       - summary_<app>_build
+#       - migops_lars_suffix  (UI suffix after 'LARS/')
+#     Returns JSON with per-file results.
+#     """
+#     apps = current_app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])
+#     suffix = (request.form.get("migops_lars_suffix") or "").strip()
+#     # Hard-enforce LARS/ root in helper; suffix may be blank -> 'LARS/'
+#     all_results = []
+#     any_selected = False
 
-    for app_name in apps:
-        s = request.form.get(f"summary_{app_name.lower()}_stream") or ""
-        b = request.form.get(f"summary_{app_name.lower()}_build") or ""
-        s, b = s.strip(), b.strip()
-        if not s or not b:
-            continue
-        any_selected = True
+#     for app_name in apps:
+#         s = request.form.get(f"summary_{app_name.lower()}_stream") or ""
+#         b = request.form.get(f"summary_{app_name.lower()}_build") or ""
+#         s, b = s.strip(), b.strip()
+#         if not s or not b:
+#             continue
+#         any_selected = True
 
-        # Build plan and upload
-        plan = plan_artifacts(app_name, s, b, suffix_prefix=suffix)
-        current_app.app_log.info(
-            "upload plan: user=%s app=%s stream=%s build=%s count=%d",
-            getattr(getattr(request, "user", None), "username", "-"),
-            app_name, s, b, len(plan)
-        )
-        results = upload_plan(plan)
-        all_results.extend([{"app": app_name, "stream": s, "build": b, **r} for r in results])
+#         # Build plan and upload
+#         plan = plan_artifacts(app_name, s, b, suffix_prefix=suffix)
+#         current_app.app_log.info(
+#             "upload plan: user=%s app=%s stream=%s build=%s count=%d",
+#             getattr(getattr(request, "user", None), "username", "-"),
+#             app_name, s, b, len(plan)
+#         )
+#         results = upload_plan(plan)
+#         all_results.extend([{"app": app_name, "stream": s, "build": b, **r} for r in results])
 
-    if not any_selected:
-        return jsonify({"ok": False, "message": "No app selections found.", "results": []}), 400
+#     if not any_selected:
+#         return jsonify({"ok": False, "message": "No app selections found.", "results": []}), 400
 
-    ok = all(r.get("ok") for r in all_results) if all_results else False
-    return jsonify({"ok": ok, "results": all_results})
+#     ok = all(r.get("ok") for r in all_results) if all_results else False
+#     return jsonify({"ok": ok, "results": all_results})
 
 @main.post("/lars2aws/plan")
 @login_required

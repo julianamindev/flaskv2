@@ -98,7 +98,12 @@
       <!-- Summary (Form 2) -->
       <hr class="my-4">
 
-      <h2 class="h5 mb-3">Selected builds</h2>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">Selected builds</h2>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="autofill-sr">
+          Autofill SR Releases
+        </button>
+      </div>
       <div class="row g-3">
         {% for app in APPS %}
         <div class="col-md-6 col-lg-3">

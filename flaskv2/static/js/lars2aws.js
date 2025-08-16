@@ -340,3 +340,131 @@ $(function () {
     });
   });
 })();
+
+// ---- Autofill SR Releases: fill all apps with latest R build for REL_YYYY_MM, set MT/<MMM> ----
+(function () {
+  const APPS = (window.L2A && window.L2A.APPS) || [];
+
+  const monthAbbrev = (d) => d.toLocaleString('en-US', { month: 'short' }).toUpperCase(); // AUG, SEP, ...
+
+  async function fetchStreamExact(app, name) {
+    // Page through /api/streams until we find an exact `name`
+    let page = 1;
+    while (true) {
+      const data = await $.getJSON('/api/streams', { app, q: name, page });
+      const hit = (data.results || []).find(r => (r.text || r.id) === name);
+      if (hit) return hit;
+      if (!data.pagination || !data.pagination.more) return null;
+      page += 1;
+    }
+  }
+
+  async function fetchLatestRBuild(app, streamId) {
+    // Iterate /api/builds pages; choose the build with maturity 'R' and highest release_id
+    let page = 1;
+    let best = null;
+
+    const consider = (item) => {
+      // Support both enriched payloads and "TEXT--id" labels
+      const maturity = (item.maturity || '').toString().toUpperCase();
+      const txt = (item.text || '').trim();
+      const parts = txt.split('--');
+      const code = maturity || (parts[0] || '').trim().toUpperCase();
+
+      if (code !== 'R') return;
+
+      const idStr = item.release_id != null ? String(item.release_id)
+                   : item.id != null ? String(item.id)
+                   : (parts[1] || '').trim();
+      const idNum = parseInt(idStr, 10);
+      const rank = Number.isFinite(idNum) ? idNum : idStr;
+
+      if (!best) best = { item, rank };
+      else if (typeof rank === 'number' && typeof best.rank === 'number') {
+        if (rank > best.rank) best = { item, rank };
+      } else if (String(rank) > String(best.rank)) {
+        best = { item, rank };
+      }
+    };
+
+    while (true) {
+      const data = await $.getJSON('/api/builds', { app, stream_id: streamId, page });
+      (data.results || []).forEach(consider);
+      if (!data.pagination || !data.pagination.more) break;
+      page += 1;
+    }
+    return best ? best.item : null;
+  }
+
+  function setSelect2Value($select, item) {
+    const text = item.text || item.id;
+    const val  = item.id != null ? item.id : text;
+    if ($select.find(`option[value="${val}"]`).length === 0) {
+      $select.append(new Option(text, val, true, true));
+    }
+    $select.val(val).trigger('change');
+  }
+
+  async function autofillSR() {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const mm   = String(now.getMonth() + 1).padStart(2, '0'); // 01..12
+      const rel  = `REL_${year}_${mm}`;
+      const mmm  = monthAbbrev(now); // e.g., AUG
+
+      // 1) MIG must have this stream or we abort
+      const migStream = await fetchStreamExact('MIG', rel);
+      if (!migStream) {
+        showAlert(`Required MIG stream <b>${rel}</b> is not available for this month.`, 'danger');
+        return;
+      }
+
+      // 2) For every app, set stream to REL_YYYY_MM and pick latest R build
+      for (const app of APPS) {
+        const key = app.toLowerCase();
+        const $stream = $(`#${key}-stream`);
+        const $build  = $(`#${key}-build`);
+
+        // Turn off manual stream mode if on
+        const $manualToggle = $(`#${key}-manual-toggle`);
+        const $manualWrap   = $(`#${key}-manual-stream-wrap`);
+        const $manualInput  = $(`#${key}-manual-input`);
+        if ($manualToggle.length && $manualToggle.is(':checked')) {
+          $manualToggle.prop('checked', false).trigger('change');
+        }
+        $manualWrap.addClass('d-none');
+        $manualInput.val('');
+
+        // Use MIG's found stream for MIG; search exact for others
+        const stream = app === 'MIG' ? migStream : await fetchStreamExact(app, rel);
+        if (!stream) continue;
+
+        // Select the stream
+        setSelect2Value($stream, stream);
+
+        // Fetch & pick the latest Release-maturity (R) build
+        const rBuild = await fetchLatestRBuild(app, stream.id);
+        if (!rBuild) continue;
+
+        // Select the build (handlers will update the summary/hidden fields)
+        setSelect2Value($build, rBuild);
+      }
+
+      // 3) Set destination suffix to MT/<MMM> and update hidden full path
+      $('#migops-lars-input').val(`MT/${mmm}`).trigger('input');
+
+      showAlert(`Autofilled SR releases for <b>${rel}</b>. You can still adjust any field.`, 'success');
+    } catch (err) {
+      console.error(err);
+      showAlert('Autofill failed due to an unexpected error.', 'danger');
+    }
+  }
+
+  $(function () {
+    $('#autofill-sr').on('click', function (e) {
+      e.preventDefault();
+      autofillSR();
+    });
+  });
+})();
