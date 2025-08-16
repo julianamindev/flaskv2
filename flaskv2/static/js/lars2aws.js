@@ -320,12 +320,24 @@ $(function () {
 })();
 
 
-// ---- Autofill SR Releases (MIG uses latest 'B', others latest 'R') ----
+// ---- Autofill SR Releases (MIG uses latest 'B', others latest 'R') + loading spinner ----
 (function () {
   const APPS = (window.L2A && window.L2A.APPS) || [];
 
   const monthAbbrev = (d) =>
     d.toLocaleString('en-US', { month: 'short' }).toUpperCase(); // AUG, SEP, ...
+
+  function alertUI(msg, type = 'warning') {
+    // fallback if showAlert isn't global
+    if (typeof window.showAlert === 'function') return window.showAlert(msg, type);
+    const $zone = $('#l2a-alerts');
+    $zone.html(`
+      <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+        ${msg}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    `);
+  }
 
   async function fetchStreamExact(app, name) {
     let page = 1;
@@ -338,7 +350,7 @@ $(function () {
     }
   }
 
-  async function fetchLatestBuild(app, streamId, wantedCode /* e.g., 'R' or 'B' */) {
+  async function fetchLatestBuild(app, streamId, wantedCode /* 'R' or 'B' */) {
     let page = 1;
     let best = null;
 
@@ -377,76 +389,97 @@ $(function () {
     if ($select.find(`option[value="${val}"]`).length === 0) {
       $select.append(new Option(text, val, true, true));
     }
-    $select.val(val).trigger('change'); // triggers our 'change' listeners
+    $select.val(val).trigger('change'); // triggers our 'change' listeners to update summary/hidden
+  }
+
+  async function processApp(app, rel, migStream) {
+    const key = app.toLowerCase();
+    const $stream = $(`#${key}-stream`);
+    const $build  = $(`#${key}-build`);
+
+    // turn off manual stream mode if on
+    const $manualToggle = $(`#${key}-manual-toggle`);
+    const $manualWrap   = $(`#${key}-manual-stream-wrap`);
+    const $manualInput  = $(`#${key}-manual-input`);
+    if ($manualToggle.length && $manualToggle.is(':checked')) {
+      $manualToggle.prop('checked', false).trigger('change');
+    }
+    $manualWrap.addClass('d-none');
+    $manualInput.val('');
+
+    // stream per app
+    const stream = app === 'MIG' ? migStream : await fetchStreamExact(app, rel);
+    if (!stream) return; // skip app if stream missing
+
+    // select stream
+    setSelect2Value($stream, stream);
+
+    // latest build (MIG='B', others='R')
+    const wanted = app === 'MIG' ? 'B' : 'R';
+    const bestBuild = await fetchLatestBuild(app, stream.id, wanted);
+    if (!bestBuild) return;
+
+    // select build
+    setSelect2Value($build, bestBuild);
+
+    // explicitly update summary/hidden (covers programmatic selections)
+    const streamVal = stream.id != null ? stream.id : (stream.text || '');
+    const buildVal  = bestBuild.id != null ? bestBuild.id : (bestBuild.text || '');
+    $(`#summary-${key}`).val(buildVal);
+    $(`#hidden-${key}-stream`).val(streamVal);
+    $(`#hidden-${key}-build`).val(buildVal);
   }
 
   async function autofillSR() {
-    try {
-      const now = new Date();
-      const year = now.getFullYear();
-      const mm   = String(now.getMonth() + 1).padStart(2, '0');
-      const rel  = `REL_${year}_${mm}`;
-      const mmm  = monthAbbrev(now);
+    const now = new Date();
+    const year = now.getFullYear();
+    const mm   = String(now.getMonth() + 1).padStart(2, '0');
+    const rel  = `REL_${year}_${mm}`;
+    const mmm  = monthAbbrev(now);
 
-      // MIG required
-      const migStream = await fetchStreamExact('MIG', rel);
-      if (!migStream) {
-        showAlert(`Required MIG stream <b>${rel}</b> is not available for this month.`, 'danger');
-        return;
-      }
-
-      for (const app of APPS) {
-        const key = app.toLowerCase();
-        const $stream = $(`#${key}-stream`);
-        const $build  = $(`#${key}-build`);
-
-        // disable manual stream mode if active
-        const $manualToggle = $(`#${key}-manual-toggle`);
-        const $manualWrap   = $(`#${key}-manual-stream-wrap`);
-        const $manualInput  = $(`#${key}-manual-input`);
-        if ($manualToggle.length && $manualToggle.is(':checked')) {
-          $manualToggle.prop('checked', false).trigger('change');
-        }
-        $manualWrap.addClass('d-none');
-        $manualInput.val('');
-
-        // stream per app
-        const stream = app === 'MIG' ? migStream : await fetchStreamExact(app, rel);
-        if (!stream) continue;
-
-        // select stream
-        setSelect2Value($stream, stream);
-
-        // latest build (MIG='B', others='R')
-        const wanted = app === 'MIG' ? 'B' : 'R';
-        const bestBuild = await fetchLatestBuild(app, stream.id, wanted);
-        if (!bestBuild) continue;
-
-        // select build
-        setSelect2Value($build, bestBuild);
-
-        // explicitly update summary/hidden (programmatic selection)
-        const streamVal = stream.id != null ? stream.id : (stream.text || '');
-        const buildVal  = bestBuild.id != null ? bestBuild.id : (bestBuild.text || '');
-        $(`#summary-${key}`).val(buildVal);
-        $(`#hidden-${key}-stream`).val(streamVal);
-        $(`#hidden-${key}-build`).val(buildVal);
-      }
-
-      // S3 suffix: MT/<MMM>
-      $('#migops-lars-input').val(`MT/${mmm}`).trigger('input');
-
-      showAlert(`Autofilled SR releases for <b>${rel}</b>. You can still adjust any field.`, 'success');
-    } catch (err) {
-      console.error(err);
-      showAlert('Autofill failed due to an unexpected error.', 'danger');
+    // MIG required
+    const migStream = await fetchStreamExact('MIG', rel);
+    if (!migStream) {
+      alertUI(`Required MIG stream <b>${rel}</b> is not available for this month.`, 'danger');
+      return;
     }
+
+    // process all apps in parallel for speed
+    await Promise.all(APPS.map(app => processApp(app, rel, migStream)));
+
+    // S3 suffix: MT/<MMM>
+    $('#migops-lars-input').val(`MT/${mmm}`).trigger('input');
+
+    alertUI(`Autofilled SR releases for <b>${rel}</b>. You can still adjust any field.`, 'success');
   }
 
   $(function () {
-    $('#autofill-sr').on('click', function (e) {
+    $('#autofill-sr').on('click', async function (e) {
       e.preventDefault();
-      autofillSR();
+      const $btn = $(this);
+      const $upload = $('#upload-btn');
+      const $clear  = $('#clear-selections');
+
+      // loading state
+      const originalHtml = $btn.html();
+      $btn.prop('disabled', true)
+          .attr('aria-busy', 'true')
+          .html('<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Autofilling…');
+      $upload.prop('disabled', true);
+      $clear.prop('disabled', true);
+
+      try {
+        await autofillSR();
+      } catch (err) {
+        console.error(err);
+        alertUI('Autofill failed due to an unexpected error.', 'danger');
+      } finally {
+        // restore UI
+        $btn.prop('disabled', false).removeAttr('aria-busy').html(originalHtml);
+        $upload.prop('disabled', false);
+        $clear.prop('disabled', false);
+      }
     });
   });
 })();
+
