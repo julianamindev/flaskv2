@@ -14,6 +14,18 @@ def audit(action: str, **fields):
     # Use 'force_log' for events you want to keep even if path is in DropPathFilter
     current_app.audit.info(action, extra=fields)
 
+def _selected_from_form(form):
+    """Extract selected streams/builds from the summary inputs."""
+    selected = {}
+    apps = current_app.config.get("LARS_APPS", ["MIG", "HCM", "IEFIN", "Landmark"])
+    for app in apps:
+        key = app.lower()
+        s = (form.get(f"summary_{key}_stream") or "").strip()
+        b = (form.get(f"summary_{key}_build") or "").strip()
+        if s or b:
+            selected[app] = {"stream": s, "build": b}
+    return selected
+
 @main.route("/")
 @main.route("/home")
 @login_required
@@ -230,6 +242,19 @@ def lars2aws_plan():
 
     if not any_selected:
         return jsonify({"ok": False, "message": "No app selections found.", "artifacts": []}), 400
+    
+    # Audit one line per submission (includes who, ip, etc. via filters)
+    audit(
+        "lars2aws.plan",
+        s3_prefix=s3_prefix,
+        artifacts_count=len(artifacts),
+        selected=_selected_from_form(request.form),
+    )
+    
+    current_app.app_log.info(
+        "lars2aws.plan",
+        extra={"s3_prefix": s3_prefix, "artifacts_count": len(artifacts)}
+)
 
     return jsonify({"ok": True, "s3_prefix": s3_prefix, "artifacts": artifacts})
 
@@ -242,6 +267,27 @@ def lars2aws_upload_item():
     """
     data = request.get_json(silent=True) or {}
     result = upload_item(data)
+
+    log_extra = {
+        "source_url": data.get("source_url"),
+        "bucket": data.get("bucket"),
+        "key": data.get("key"),
+        "metadata": data.get("metadata"),
+        "ok": bool(result.get("ok")),
+        "error": result.get("error"),
+    }
+
+    # Write to audit log (persisted in audit.log)
+    if result.get("ok"):
+        audit("lars2aws.upload_item.ok", **log_extra)
+    else:
+        audit("lars2aws.upload_item.fail", **log_extra)
+
+    if result.get("ok"):
+        current_app.app_log.info("lars2aws.upload_item.ok", extra=log_extra)
+    else:
+        current_app.app_log.warning("lars2aws.upload_item.fail", extra=log_extra)
+
     return jsonify(result), (200 if result.get("ok") else 502)
 
 
