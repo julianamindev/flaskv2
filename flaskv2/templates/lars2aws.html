@@ -39,13 +39,13 @@
       <ul class="mb-0">
         <li>Pick a <b>Stream</b>, then choose a <b>Build</b> (lists load on demand).</li>
         <li>If your stream isn’t listed, toggle <b>Manual stream</b>, type the exact name, then click <b>Use stream</b>.</li>
-        <li><b>Autofill SR Releases</b> fills all apps with the current month’s releases (MIG uses the latest <b>Built</b>, others latest <b>Released</b> maturity) and sets the S3 destination folder to <code>MT/&lt;MMM&gt;</code>.</li>
+        <li><b>Autofill SR</b> fills all apps with the current month’s service release (MIG uses the latest <b>Built</b>, others latest <b>Released</b> maturity) and sets the S3 destination folder to <code>MT/&lt;MMM&gt;</code>.</li>
         <li>Review the selected builds, set the S3 destination suffix, then <b>Upload to S3</b>.</li>
       </ul>
     </div>
 
     <div class="alert alert-warning mb-3 py-2">
-      <strong>Note:</strong> Autofill works only if MIG’s current-month Service Release exists —
+      <strong>Note:</strong> <u>Autofill SR</u> works only if MIG’s current-month Service Release exists —
       i.e., stream <code>REL_YYYY_MM</code> for this month is available. If it isn’t, you’ll see an error and no fields will be autofilled.
     </div>
   </div>
@@ -127,7 +127,7 @@
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h5 mb-0">Selected builds</h2>
         <button type="button" class="btn btn-outline-secondary btn-sm" id="autofill-sr">
-          Autofill SR Releases
+          Autofill SR
         </button>
       </div>
       <div class="row g-3">

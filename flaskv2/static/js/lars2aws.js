@@ -320,7 +320,7 @@ $(function () {
 })();
 
 
-// ---- Autofill SR Releases (MIG uses latest 'B', others latest 'R') + loading spinner ----
+// ---- Autofill SR (MIG uses latest 'B', others latest 'R') + loading spinner ----
 (function () {
   const APPS = (window.L2A && window.L2A.APPS) || [];
 
@@ -450,7 +450,7 @@ $(function () {
     // S3 suffix: MT/<MMM>
     $('#migops-lars-input').val(`MT/${mmm}`).trigger('input');
 
-    alertUI(`Autofilled SR releases for <b>${rel}</b>. You can still adjust any field.`, 'success');
+    alertUI(`Autofilled SR for <b>${rel}</b>. You can still adjust any field.`, 'success');
   }
 
   $(function () {
