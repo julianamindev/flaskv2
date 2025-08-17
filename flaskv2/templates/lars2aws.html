@@ -45,8 +45,12 @@
     </div>
 
     <div class="alert alert-warning mb-3 py-2">
-      <strong>Note:</strong> <u>Autofill SR</u> works only if MIG’s current-month Service Release exists —
-      i.e., stream <code>REL_YYYY_MM</code> for this month is available. If it isn’t, you’ll see an error and no fields will be autofilled.
+      <div class="fw-semibold mb-1">Notes</div>
+      <ul class="mb-0">
+        <li><u>Autofill SR</u> works only if MIG’s current-month Service Release exists — i.e., stream <code>REL_YYYY_MM</code> for this month is available. If it isn’t, you’ll see an error and no fields will be autofilled.</li>
+        <li>You can upload to LARS root directory by leaving the S3 Destination field empty. However, this is normally reserved for the current month's SR builds.</li>
+      </ul>
+      
     </div>
   </div>
 
