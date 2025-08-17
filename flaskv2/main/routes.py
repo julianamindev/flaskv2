@@ -7,6 +7,7 @@ from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
 from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, get_app_data, get_builds_for_app_stream, get_streams_for_app, plan_artifacts, stream_exists_live, upload_item, upload_plan
 
+
 main = Blueprint('main', __name__)
 
 def audit(action: str, **fields):
@@ -27,11 +28,14 @@ def _selected_from_form(form):
     return selected
 
 @main.route("/")
+def index():
+    return redirect(url_for("main.home"), code=302)
+
 @main.route("/home")
 @login_required
 def home():
-    current_app.app_log.info("view_dashboard")
-    return render_template('dashboard.html')
+    current_app.app_log.info("view_dashboard")  
+    return render_template("dashboard.html")
 
 
 @main.route("/lars2aws", methods=["GET"])

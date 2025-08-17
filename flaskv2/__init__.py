@@ -1,7 +1,8 @@
 
+from copy import deepcopy
 import os
 
-from flask import Flask, current_app, flash, redirect, session, url_for
+from flask import Flask, current_app, flash, redirect, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, current_user, logout_user
@@ -11,6 +12,7 @@ from flaskv2.extensions import cache
 from flask_mail import Mail
 
 from flaskv2.utils.helpers import get_app_data, get_streams_for_app, _get_envnum
+from flaskv2.utils.page_dict import side_nav_items
 
 db = SQLAlchemy()
 bcrypt = Bcrypt()
@@ -21,15 +23,39 @@ mail = Mail()
 
 def create_app(config_class=BaseConfig):
     app = Flask(__name__)
-    # if config_class is None:
-    #     env = os.getenv("APP_ENV", "test").lower()
-    #     config_class = {"dev": DevConfig, "prod": ProdConfig, "test": TestConfig}.get(env, DevConfig)
 
     app.config.from_object(config_class)
 
     @app.context_processor
     def inject_apps():
         return {"APPS": app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])}
+    
+    # ---- Side nav: Section -> Subsection -> Links ----
+    def build_side_nav():
+        items = deepcopy(side_nav_items)
+
+        # Role-based section pruning (remove entire "Admin" section for non-admins)
+        if not getattr(current_user, "is_admin", False):
+            items.pop("Admin", None)
+
+        current_ep = request.endpoint  # e.g. 'main.lars2aws'
+
+        # Walk: section -> subsection -> links
+        for section_name, subsections in items.items():
+            # subsections is a dict: { "AWS": {...}, "Another": {...} }
+            for sub_name, details in subsections.items():
+                is_expanded = False
+                for link in details.get("child_links", []):
+                    link["is_active"] = (link.get("route") == current_ep)
+                    is_expanded = is_expanded or link["is_active"]
+                details["is_expanded"] = is_expanded
+
+        return items
+
+    @app.context_processor
+    def inject_side_nav():
+        # available in ALL templates as `side_nav`
+        return {"side_nav": build_side_nav()}
 
     setup_logging(app)
 
