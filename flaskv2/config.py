@@ -23,8 +23,8 @@ class BaseConfig:
 
     # --- Mail ---
     MAIL_SERVER             = os.getenv("MAIL_SERVER")
-    MAIL_PORT               = env_int("MAIL_PORT", 587)
-    MAIL_USE_TLS            = env_bool("MAIL_USE_TLS", True)
+    MAIL_PORT               = env_int("MAIL_PORT", 587 if int(os.getenv("ENVNUM")) == 1 else 25) # 25 is for smtp-relay.infor.com (prod/staging)
+    MAIL_USE_TLS            = env_bool("MAIL_USE_TLS", False)
     MAIL_USE_SSL            = env_bool("MAIL_USE_SSL", False)
     MAIL_USERNAME           = os.getenv("MAIL_USERNAME")
     MAIL_PASSWORD           = os.getenv("MAIL_PASSWORD")
