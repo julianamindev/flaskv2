@@ -27,6 +27,7 @@ users = Blueprint('users', __name__)
 @users.route("/register", methods=['GET', 'POST'])
 @login_required
 def register():
+    start = time.perf_counter()
     current_app.app_log.info("view_register")
 
     if not current_user.is_admin:
