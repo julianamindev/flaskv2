@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import time
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
@@ -131,6 +131,10 @@ def api_stream_exists():
 @main.route("/list")
 @login_required
 def user_list():
+    if not current_user.is_admin:
+        audit("access_denied", outcome="denied", reason="not_admin")
+        abort(403)
+
     start = time.perf_counter()
     try:
         users = User.query.all()

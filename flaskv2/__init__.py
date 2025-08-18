@@ -94,10 +94,12 @@ def create_app(config_class=BaseConfig):
 
     from flaskv2.users.routes import users
     from flaskv2.main.routes import main
+    from flaskv2.errors.handlers import errors
     from flaskv2.errortest.routes import test
 
     app.register_blueprint(users)
     app.register_blueprint(main)
+    app.register_blueprint(errors)
     app.register_blueprint(test)
 
     return app

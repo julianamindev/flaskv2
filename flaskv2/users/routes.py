@@ -31,8 +31,8 @@ def register():
     current_app.app_log.info("view_register")
 
     if not current_user.is_admin:
-        audit("register_denied", outcome="denied", reason="not_admin")
-        return redirect(url_for('main.home'))
+        audit("access_denied", outcome="denied", reason="not_admin")
+        abort(403)
 
     form = RegistrationForm()
     if form.validate_on_submit():
