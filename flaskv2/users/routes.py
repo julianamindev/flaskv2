@@ -109,8 +109,11 @@ This link will expire in 1 hour.
 
 @users.route("/forgot_password", methods=['GET', 'POST'])
 def forgot_password():
+    
     if current_user.is_authenticated:
         return redirect(url_for('main.home'))
+    
+    start = time.perf_counter()
 
     current_app.app_log.info("view_forgot_password")
     form = ForgotPasswordForm()
