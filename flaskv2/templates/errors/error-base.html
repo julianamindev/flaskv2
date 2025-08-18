@@ -1,0 +1,26 @@
+{% extends "base/auth/auth-base.html" %}
+
+{% block extra_head %}
+  <link href="{{ url_for('static', filename='css/extras/error.css') }}" rel="stylesheet" />
+  <style>
+    /* Desktop-only: fill viewport minus footer */
+    .error-viewport { min-height: calc(100vh - 69px); }
+  </style>
+{% endblock %}
+
+{% block main %}
+<main>
+  <div class="custom-bg text-light">
+    <div class="d-flex align-items-center justify-content-center error-viewport px-2">
+      <div class="text-center">
+        <h1 class="display-1 fw-bold">{% block error_code %}{% endblock %}</h1>
+        <p class="fs-2 fw-medium mt-4">{% block main_text %}{% endblock %}</p>
+        <p class="mt-4 mb-5">{% block message %}{% endblock %}</p>
+        <a href="/" class="btn btn-light fw-semibold rounded-pill px-4 py-2 custom-btn">
+          Go Back to Dashboard
+        </a>
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}
