@@ -299,6 +299,11 @@ def lars2aws_upload_item():
     return jsonify(result), (200 if result.get("ok") else 502)
 
 
+@main.route("/aws/instances")
+@login_required
+def instances():
+    return render_template('aws/instances.html')
+
 # @main.route("/__audit_test")
 # def audit_test():
 #     current_app.audit.info("audit_test", extra={"foo": "bar"})

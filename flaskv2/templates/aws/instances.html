@@ -1,0 +1,276 @@
+{% extends "base/home/home-base.html" %}
+
+{% block title %}EC2 Instances{% endblock %}
+
+{% block main %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <form class="d-flex gap-2 align-items-center" onsubmit="location.reload();return false;">
+      <select class="form-select" style="width: 220px" onchange="/* would submit in real app */ void 0;">
+        <option selected>ap-southeast-1</option>
+        <option>ap-southeast-2</option>
+        <option>us-east-1</option>
+        <option>us-west-2</option>
+      </select>
+      <button class="btn btn-outline-secondary" type="submit">
+        Refresh
+      </button>
+    </form>
+
+    <div class="vr mx-2 d-none d-md-block"></div>
+
+    <input id="searchInput" class="form-control" style="max-width: 280px" placeholder="Search name / id / ip…">
+
+    <select id="stateFilter" class="form-select" style="width: 180px">
+      <option value="">All states</option>
+      <option>running</option>
+      <option>stopped</option>
+      <option>pending</option>
+      <option>stopping</option>
+      <option>shutting-down</option>
+      <option>terminated</option>
+    </select>
+
+    <div class="ms-auto">
+      <div class="btn-group">
+        <button id="bulkBtn" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" disabled>Bulk actions</button>
+        <ul class="dropdown-menu">
+          <li><button class="dropdown-item" onclick="demoBulk('start')">Start</button></li>
+          <li><button class="dropdown-item" onclick="demoBulk('stop')">Stop</button></li>
+          <li><button class="dropdown-item" onclick="demoBulk('reboot')">Reboot</button></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><button class="dropdown-item text-danger" onclick="demoBulk('terminate')">Terminate</button></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive border rounded">
+    <table id="instancesTable" class="table table-hover align-middle mb-0">
+      <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+        <tr>
+          <th style="width:36px"><input type="checkbox" class="form-check-input" id="checkAll"></th>
+          <th>Name</th>
+          <th>Instance ID</th>
+          <th>State</th>
+          <th>Type</th>
+          <th>AZ</th>
+          <th>Private IP</th>
+          <th>Public IP</th>
+          <th>Launch time</th>
+          <th style="width:1%"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Dummy rows -->
+        <tr data-state="running" data-type="t3.micro" data-az="ap-southeast-1a">
+          <td><input type="checkbox" class="form-check-input row-check" value="i-0a1b2c3d4e5f67890"></td>
+          <td class="fw-semibold">web-1</td>
+          <td><code>i-0a1b2c3d4e5f67890</code></td>
+          <td><span class="badge text-bg-success">running</span></td>
+          <td>t3.micro</td>
+          <td>ap-southeast-1a</td>
+          <td>10.0.1.12</td>
+          <td>54.169.10.21</td>
+          <td title="2025-07-20T02:14:00Z">2025-07-20 10:14</td>
+          <td>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" onclick="demoRow('start','i-0a1b2c3d4e5f67890')">Start</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('stop','i-0a1b2c3d4e5f67890')">Stop</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('reboot','i-0a1b2c3d4e5f67890')">Reboot</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" onclick="demoRow('terminate','i-0a1b2c3d4e5f67890')">Terminate</button></li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <tr data-state="stopped" data-type="t3.small" data-az="ap-southeast-1b">
+          <td><input type="checkbox" class="form-check-input row-check" value="i-0123abcd4567ef890"></td>
+          <td class="fw-semibold">api-2</td>
+          <td><code>i-0123abcd4567ef890</code></td>
+          <td><span class="badge text-bg-secondary">stopped</span></td>
+          <td>t3.small</td>
+          <td>ap-southeast-1b</td>
+          <td>10.0.2.45</td>
+          <td>—</td>
+          <td title="2025-06-12T08:30:00Z">2025-06-12 16:30</td>
+          <td>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" onclick="demoRow('start','i-0123abcd4567ef890')">Start</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('stop','i-0123abcd4567ef890')">Stop</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('reboot','i-0123abcd4567ef890')">Reboot</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" onclick="demoRow('terminate','i-0123abcd4567ef890')">Terminate</button></li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <tr data-state="pending" data-type="t3.medium" data-az="ap-southeast-1c">
+          <td><input type="checkbox" class="form-check-input row-check" value="i-0fedcba9876543210"></td>
+          <td class="fw-semibold">batch-queue</td>
+          <td><code>i-0fedcba9876543210</code></td>
+          <td><span class="badge text-bg-warning">pending</span></td>
+          <td>t3.medium</td>
+          <td>ap-southeast-1c</td>
+          <td>10.0.3.77</td>
+          <td>—</td>
+          <td title="2025-08-10T01:02:00Z">2025-08-10 09:02</td>
+          <td>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" onclick="demoRow('start','i-0fedcba9876543210')">Start</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('stop','i-0fedcba9876543210')">Stop</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('reboot','i-0fedcba9876543210')">Reboot</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" onclick="demoRow('terminate','i-0fedcba9876543210')">Terminate</button></li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <tr data-state="stopping" data-type="t3.large" data-az="ap-southeast-1a">
+          <td><input type="checkbox" class="form-check-input row-check" value="i-0abc1234def567890"></td>
+          <td class="fw-semibold">etl-1</td>
+          <td><code>i-0abc1234def567890</code></td>
+          <td><span class="badge text-bg-warning">stopping</span></td>
+          <td>t3.large</td>
+          <td>ap-southeast-1a</td>
+          <td>10.0.4.22</td>
+          <td>13.250.44.10</td>
+          <td title="2025-05-03T14:00:00Z">2025-05-03 22:00</td>
+          <td>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" onclick="demoRow('start','i-0abc1234def567890')">Start</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('stop','i-0abc1234def567890')">Stop</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('reboot','i-0abc1234def567890')">Reboot</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" onclick="demoRow('terminate','i-0abc1234def567890')">Terminate</button></li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <tr data-state="shutting-down" data-type="t3.micro" data-az="ap-southeast-1b">
+          <td><input type="checkbox" class="form-check-input row-check" value="i-0555aaabbbcccddde"></td>
+          <td class="fw-semibold">old-web</td>
+          <td><code>i-0555aaabbbcccddde</code></td>
+          <td><span class="badge text-bg-danger">shutting-down</span></td>
+          <td>t3.micro</td>
+          <td>ap-southeast-1b</td>
+          <td>10.0.5.19</td>
+          <td>—</td>
+          <td title="2025-04-18T06:45:00Z">2025-04-18 14:45</td>
+          <td>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" onclick="demoRow('start','i-0555aaabbbcccddde')">Start</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('stop','i-0555aaabbbcccddde')">Stop</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('reboot','i-0555aaabbbcccddde')">Reboot</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" onclick="demoRow('terminate','i-0555aaabbbcccddde')">Terminate</button></li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+        <tr data-state="terminated" data-type="t3.micro" data-az="ap-southeast-1c">
+          <td><input type="checkbox" class="form-check-input row-check" value="i-0deadbeef00cab123"></td>
+          <td class="fw-semibold">sandbox</td>
+          <td><code>i-0deadbeef00cab123</code></td>
+          <td><span class="badge text-bg-danger">terminated</span></td>
+          <td>t3.micro</td>
+          <td>ap-southeast-1c</td>
+          <td>—</td>
+          <td>—</td>
+          <td title="2025-03-01T10:11:00Z">2025-03-01 18:11</td>
+          <td>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" onclick="demoRow('start','i-0deadbeef00cab123')">Start</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('stop','i-0deadbeef00cab123')">Stop</button></li>
+                <li><button class="dropdown-item" onclick="demoRow('reboot','i-0deadbeef00cab123')">Reboot</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" onclick="demoRow('terminate','i-0deadbeef00cab123')">Terminate</button></li>
+              </ul>
+            </div>
+          </td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const searchInput = document.getElementById('searchInput');
+  const stateFilter = document.getElementById('stateFilter');
+  const table = document.getElementById('instancesTable');
+  const rows = table.querySelectorAll('tbody tr');
+  const bulkBtn = document.getElementById('bulkBtn');
+  const checkAll = document.getElementById('checkAll');
+
+  function applyFilters() {
+    const q = (searchInput.value || '').toLowerCase();
+    const state = stateFilter.value;
+    rows.forEach(tr => {
+      const text = tr.innerText.toLowerCase();
+      const trState = tr.dataset.state;
+      const show = (!q || text.includes(q)) && (!state || trState === state);
+      tr.style.display = show ? '' : 'none';
+    });
+    // Uncheck "check all" when filtering changes view
+    checkAll.checked = false;
+    syncBulk();
+  }
+  searchInput.addEventListener('input', applyFilters);
+  stateFilter.addEventListener('change', applyFilters);
+
+  function getCheckedIds() {
+    // only include visible rows
+    return [...document.querySelectorAll('tbody tr')]
+      .filter(tr => tr.style.display !== 'none')
+      .map(tr => tr.querySelector('.row-check'))
+      .filter(cb => cb && cb.checked)
+      .map(cb => cb.value);
+  }
+  function syncBulk() {
+    const ids = getCheckedIds();
+    bulkBtn.disabled = ids.length === 0;
+  }
+  document.addEventListener('change', (e) => {
+    if (e.target.classList.contains('row-check')) syncBulk();
+  });
+
+  checkAll.addEventListener('change', () => {
+    const visibleRows = [...rows].filter(tr => tr.style.display !== 'none');
+    visibleRows.forEach(tr => {
+      const cb = tr.querySelector('.row-check');
+      if (cb) cb.checked = checkAll.checked;
+    });
+    syncBulk();
+  });
+
+  function demoBulk(action) {
+    const ids = getCheckedIds();
+    if (!ids.length) return;
+    alert(`(Demo) ${action.toUpperCase()} requested for:\n\n${ids.join('\n')}`);
+  }
+  function demoRow(action, id) {
+    alert(`(Demo) ${action.toUpperCase()} requested for ${id}`);
+  }
+</script>
+{% endblock %}
+
