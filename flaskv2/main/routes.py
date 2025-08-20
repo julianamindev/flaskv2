@@ -1,4 +1,6 @@
+from collections import defaultdict
 from datetime import datetime, timezone
+import boto3
 import time
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
@@ -298,11 +300,175 @@ def lars2aws_upload_item():
 
     return jsonify(result), (200 if result.get("ok") else 502)
 
+from collections import defaultdict, Counter
+from flask import render_template
+from flask_login import login_required
+import boto3
+from botocore.exceptions import ClientError, WaiterError
 
 @main.route("/aws/instances")
 @login_required
 def instances():
-    return render_template('aws/instances.html')
+    ec2 = boto3.client("ec2", region_name="us-east-1")
+    paginator = ec2.get_paginator("describe_instances")
+    pages = paginator.paginate()
+
+    stacks_states   = defaultdict(list)
+    stacks_clients  = {}
+    stacks_alwayson = {}
+
+    for page in pages:
+        for res in page.get("Reservations", []):
+            for inst in res.get("Instances", []):
+                tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+                stack = tags.get("aws:cloudformation:stack-name")
+                if not stack:
+                    continue
+
+                state = (inst.get("State") or {}).get("Name", "")
+                stacks_states[stack].append(state)
+
+                client = tags.get("customerPrefix")
+                if client:
+                    stacks_clients[stack] = client
+
+                logical_id = tags.get("aws:cloudformation:logical-id", "")
+                if logical_id == "INFORBCLM01LInstance":
+                    itops_region = (tags.get("ITOPS_Region") or "").strip().upper()
+                    stacks_alwayson[stack] = "On" if itops_region == "ALWAYSON" else "Off"
+
+    def classify_stack(states):
+        if not states:
+            return "Unknown"
+        all_running = all(x == "running" for x in states)
+        all_stopped = all(x == "stopped" for x in states)
+        opening = any(x in ("pending", "starting") for x in states)
+        closing = any(x in ("stopping", "shutting-down") for x in states)
+        if all_running:
+            return "Running"
+        if all_stopped:
+            return "Off"
+        if opening and not closing:
+            return "Opening"
+        if closing and not opening:
+            return "Closing"
+        return "Degraded"
+
+    stacks = []
+    for stack, states in sorted(stacks_states.items()):
+        stacks.append({
+            "name": stack,
+            "client": stacks_clients.get(stack, "-"),
+            "state": classify_stack(states),
+            "alwayson": stacks_alwayson.get(stack, "Off"),
+        })
+
+    # counts for the summary header
+    total_stacks = len(stacks)
+    print(f"{total_stacks=}")
+    state_counts = Counter(s["state"] for s in stacks)
+
+    states = ["Running", "Off", "Opening", "Closing", "Degraded", "Unknown"]
+    return render_template(
+        "aws/instances.html",
+        stacks=stacks,
+        states=states,
+        total_stacks=total_stacks,
+        state_counts=state_counts
+    )
+
+@main.route("/aws/stack/<stack_name>/storage-db-live")
+@login_required
+def stack_storage_db_live(stack_name: str):
+    region = "us-east-1"
+    ec2 = boto3.client("ec2", region_name=region)
+    ssm = boto3.client("ssm", region_name=region)
+
+    # 1) Find the DB instance id for this stack
+    db_instance_id = None
+    paginator = ec2.get_paginator("describe_instances")
+    for page in paginator.paginate(
+        Filters=[{"Name": "tag:aws:cloudformation:stack-name", "Values": [stack_name]}]
+    ):
+        for res in page.get("Reservations", []):
+            for inst in res.get("Instances", []):
+                tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+                if tags.get("aws:cloudformation:logical-id") == "INFORBCDB01Instance":
+                    db_instance_id = inst["InstanceId"]
+
+    if not db_instance_id:
+        return jsonify({"stack": stack_name, "error": "DB instance not found"}), 404
+
+    # 2) Send SSM command to run PowerShell on Windows (Get-Volume -> JSON)
+    #    Output: DriveLetter, FileSystemLabel, Size, SizeRemaining
+    ps_script = r"""
+$vols = Get-Volume | Where-Object { $_.DriveLetter -ne $null }
+$vols | Select-Object DriveLetter, FileSystemLabel,
+    @{n='Size';e={[int64]$_.Size}},
+    @{n='SizeRemaining';e={[int64]$_.SizeRemaining}} | ConvertTo-Json -Depth 3
+""".strip()
+
+    try:
+        send_resp = ssm.send_command(
+            InstanceIds=[db_instance_id],
+            DocumentName="AWS-RunPowerShellScript",
+            Parameters={"commands": [ps_script]},
+            CloudWatchOutputConfig={"CloudWatchOutputEnabled": False},
+            TimeoutSeconds=60,
+        )
+        command_id = send_resp["Command"]["CommandId"]
+    except ClientError as e:
+        return jsonify({"stack": stack_name, "error": f"SSM send failed: {e.response['Error'].get('Message', 'Unknown')}"}), 500
+
+    # 3) Poll for command result (simple loop; ~10s max)
+    status = "InProgress"
+    output = None
+    for _ in range(20):
+        time.sleep(0.5)
+        inv = ssm.get_command_invocation(CommandId=command_id, InstanceId=db_instance_id)
+        status = inv.get("Status")
+        if status in ("Success", "Cancelled", "Failed", "TimedOut"):
+            output = inv.get("StandardOutputContent") or ""
+            error_out = inv.get("StandardErrorContent") or ""
+            break
+
+    if status != "Success":
+        return jsonify({"stack": stack_name, "status": status, "error": (error_out or "Command did not succeed")}), 500
+
+    # 4) Parse JSON -> compute used/free in GiB
+    import json, math
+    try:
+        data = json.loads(output)
+        # PowerShell returns either an object or an array
+        volumes = data if isinstance(data, list) else [data]
+        result = []
+        for v in volumes:
+            size_b = int(v.get("Size") or 0)
+            free_b = int(v.get("SizeRemaining") or 0)
+            used_b = max(size_b - free_b, 0)
+            gib = 1024 ** 3
+            result.append({
+                "drive": str(v.get("DriveLetter") or "").upper(),
+                "label": v.get("FileSystemLabel") or "",
+                "size_gib": round(size_b / gib, 2),
+                "used_gib": round(used_b / gib, 2),
+                "free_gib": round(free_b / gib, 2),
+            })
+    except Exception as e:
+        return jsonify({"stack": stack_name, "error": f"Parse failed: {e}", "raw": output}), 500
+
+    return jsonify({
+        "stack": stack_name,
+        "db_instance_id": db_instance_id,
+        "volumes": result,
+        "note": "Live values from Get-Volume via SSM. Used=Size-SizeRemaining."
+    }), 200
+
+
+# @main.route("/aws/instances")
+# @login_required
+# def instances():
+#     return render_template('aws/instances.html')
 
 # @main.route("/__audit_test")
 # def audit_test():
