@@ -491,3 +491,81 @@ $(function () {
     .on('hidden.bs.collapse', () => $btn.text('How it works'));
 });
 
+
+// ---- Generate S3 suffix from MIG stream ----
+(function () {
+  // Map "08" -> "AUG"
+  function MMM_from_mm(mm) {
+    const idx = Math.max(1, Math.min(12, parseInt(mm, 10))) - 1;
+    return ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][idx] || mm;
+  }
+
+  // Compute suffix based on rules
+  function suffixFromMigStream(nameRaw) {
+    if (!nameRaw) return null;
+    const raw = nameRaw.trim();
+    if (!raw) return null;
+
+    const up  = raw.toUpperCase();
+    const low = raw.toLowerCase();
+
+    // MAINLINE
+    if (up === "MAINLINE") return "MAINLINE";
+
+    // HOTFIX*
+    if (up.startsWith("HOTFIX")) return `HOTFIX/${raw}`;
+
+    // feature*
+    if (low.startsWith("feature")) return `FEATURE/${raw}`;
+
+    // int variations
+    // 1) intINT_yyyy_mm  -> TEMP/MMM
+    const m = /^intINT_(\d{4})_(\d{2})$/i.exec(raw);
+    if (m) return `TEMP/${MMM_from_mm(m[2])}`;
+
+    // 2) intStreamName   -> INT/intStreamName
+    if (/^int[a-z0-9_]+/i.test(raw)) return `INT/${raw}`;
+
+    // Unrecognized pattern
+    return null;
+  }
+
+  function getMigStreamValue() {
+    const $toggle = $('#mig-manual-toggle');
+    if ($toggle.length && $toggle.is(':checked')) {
+      return ($('#mig-manual-input').val() || '').trim();
+    }
+    return ($('#mig-stream').val() || '').trim();
+  }
+
+  $(function () {
+    $('#gen-suffix-from-mig').on('click', function (e) {
+      e.preventDefault();
+      const stream = getMigStreamValue();
+      if (!stream) {
+        // Reuse your alert zone if available
+        if (typeof window.showAlert === 'function') {
+          showAlert('Please choose or enter a <b>MIG</b> stream first.', 'warning');
+        }
+        $('#mig-stream').select2('open');
+        return;
+      }
+
+      const suffix = suffixFromMigStream(stream);
+      if (!suffix) {
+        if (typeof window.showAlert === 'function') {
+          showAlert(`Cannot derive a folder from MIG stream <b>${stream}</b>. Please enter it manually.`, 'warning');
+        }
+        $('#migops-lars-input').focus();
+        return;
+      }
+
+      // Set the S3 field and trigger your existing hidden-path updater
+      $('#migops-lars-input').val(suffix).trigger('input');
+
+      if (typeof window.showAlert === 'function') {
+        showAlert(`Destination set to <code>${suffix}</code> from MIG stream <b>${stream}</b>.`, 'success');
+      }
+    });
+  });
+})();

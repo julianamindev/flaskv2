@@ -147,8 +147,8 @@
       </div>
 
       <!-- Path prefix -->
-      <div class="mt-4">
-        <label class="form-label" for="migops-lars-input">S3 Destination</label>
+      <!-- <div class="mt-4">
+        <label class="form-label" for="migops-lars-input">S3 Destination Folder</label>
         <div class="input-group">
           <span class="input-group-text">migops/LARS/</span>
           <input
@@ -158,6 +158,30 @@
             class="form-control"
             placeholder="e.g., MT/month or INT/intMSCM..." />
         </div>
+        <input type="hidden" name="migops_lars_path" id="migops-lars-path">
+      </div> -->
+
+      <!-- Path prefix -->
+      <div class="mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <label for="migops-lars-input" class="form-label mb-0">S3 Destination Folder</label>
+          <button type="button" id="gen-suffix-from-mig" class="btn btn-outline-secondary btn-sm">
+            Autogenerate LARS Prefix
+          </button>
+        </div>
+
+        <div class="input-group">
+          <span class="input-group-text">migops/LARS/</span>
+          <input
+            type="text"
+            id="migops-lars-input"
+            name="migops_lars_suffix"
+            class="form-control"
+            placeholder="e.g., MT/month or INT/intMSCM..."
+            required
+          />
+        </div>
+
         <input type="hidden" name="migops_lars_path" id="migops-lars-path">
       </div>
 
