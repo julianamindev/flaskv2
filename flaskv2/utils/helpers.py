@@ -1,3 +1,5 @@
+import json
+import subprocess
 import boto3
 import csv, io, requests, os, re
 
@@ -402,3 +404,116 @@ def upload_item(item: dict) -> dict:
         current_app.logger.exception("upload failed: %s -> s3://%s/%s", url, bucket, key)
         return {"ok": False, "source_url": url, "bucket": bucket, "key": key, "error": str(e)}
 
+# -------------------------------------------------------
+
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+def _find_powershell():
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    candidates = [
+        os.path.join(system_root, r"Sysnative\WindowsPowerShell\v1.0\powershell.exe"),
+        os.path.join(system_root, r"System32\WindowsPowerShell\v1.0\powershell.exe"),
+        "powershell.exe",
+    ]
+    for p in candidates:
+        if p == "powershell.exe" or os.path.exists(p):
+            return p
+    return "powershell.exe"
+
+PS_EXE = _find_powershell()
+
+def _get_ps1_path():
+    local = os.path.join(current_app.root_path, "ps1_scripts", "fetch_jobs.ps1")
+    print(f"{local=}") 
+    return local
+
+
+def _run_ps1_and_parse(prefix="PSSC-"):
+    print("_run_ps1_and_parse")
+    ps1 = _get_ps1_path()
+    if not ps1:
+        print("not ps1?")
+        current_app.logger.warning("ps1_not_found")
+        return None
+
+    cmd = [
+        PS_EXE, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+        "-File", ps1, "-Prefix", prefix,
+    ]
+    try:
+        raw = subprocess.check_output(cmd, stderr=subprocess.STDOUT, creationflags=CREATE_NO_WINDOW)
+        data = json.loads(raw.decode("utf-8", "replace") or "[]")
+        if isinstance(data, dict):
+            data = [data]
+        return data
+    except subprocess.CalledProcessError as e:
+        # current_app.logger.warning("ps1_failed",
+        #     extra={"rc": e.returncode, "out": (e.output or b'').decode("utf-8","replace")})
+        # return None
+        err = (e.output or b"").decode("utf-8", "replace")
+        current_app.logger.exception("ps1_failed rc=%s out=%s", e.returncode, err)
+        return None
+    except Exception as e:
+        current_app.logger.warning("ps1_failed", extra={"err": str(e)})
+        return None
+
+def list_pssc_tasks():
+    ps_rows = _run_ps1_and_parse(prefix="PSSC-")
+    if ps_rows:
+        rows = []
+        for r in ps_rows:
+            name_full = (r.get("Name") or "")
+            name_no_prefix = r.get("NameNoPrefix") or (name_full[5:] if name_full.startswith("PSSC-") else name_full)
+            rows.append({
+                "name": name_no_prefix,
+                "schedule": r.get("Regularity") or "—",
+                "next_run": r.get("NextRun") or "—",
+                "last_run": r.get("LastRun") or "—",
+                "success": bool(r.get("Success")),
+                "last_result": str(r.get("LastTaskResult") if r.get("LastTaskResult") is not None else ""),
+            })
+        rows.sort(key=lambda x: x["name"].lower())
+        return rows
+
+    # keep your existing CSV fallback here
+    return _schtasks_csv()
+
+def _schtasks_csv():
+    """Fallback: schtasks CSV (/v). Limited schedule info for v2 tasks."""
+    try:
+        raw = subprocess.check_output(
+            ["schtasks", "/query", "/fo", "CSV", "/v"],
+            stderr=subprocess.STDOUT,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except subprocess.CalledProcessError as e:
+        current_app.logger.error("schtasks_query_failed", extra={"returncode": e.returncode, "output": e.output.decode(errors="replace")})
+        return []
+
+    text = raw.decode("utf-8", errors="replace")
+    reader = csv.DictReader(io.StringIO(text))
+    rows = []
+    for r in reader:
+        task_name = (r.get("TaskName") or r.get("Task Name") or "").strip()
+        if not task_name.startswith(r"\PSSC-"):
+            continue
+        display = task_name.lstrip("\\")
+        no_prefix = display[5:] if display.startswith("PSSC-") else display
+
+        schedule = (r.get("Schedule") or r.get("Schedule Type") or "").strip()
+        # Next/Last run:
+        next_run = (r.get("Next Run Time") or "").strip()
+        last_run = (r.get("Last Run Time") or "").strip()
+        last_result_raw = (r.get("Last Result") or "").strip()
+
+        success = last_result_raw in ("0x0", "0X0", "0")
+        rows.append({
+            "name": no_prefix,
+            "schedule": schedule or "—",
+            "next_run": next_run or "—",
+            "last_run": last_run or "—",
+            "success": success,
+            "last_result": str(last_result_raw or ""),
+        })
+    rows.sort(key=lambda x: x["name"].lower())
+    return rows

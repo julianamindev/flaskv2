@@ -5,7 +5,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, get_app_data, get_builds_for_app_stream, get_streams_for_app, plan_artifacts, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, get_app_data, get_builds_for_app_stream, get_streams_for_app, list_pssc_tasks, plan_artifacts, stream_exists_live, upload_item, upload_plan
 
 
 main = Blueprint('main', __name__)
@@ -298,13 +298,14 @@ def lars2aws_upload_item():
 
     return jsonify(result), (200 if result.get("ok") else 502)
 
-
 @main.route("/aws/instances")
 @login_required
 def instances():
     return render_template('aws/instances.html')
 
-# @main.route("/__audit_test")
-# def audit_test():
-#     current_app.audit.info("audit_test", extra={"foo": "bar"})
-#     return "ok"
+@main.route("/bastion/task-scheduler-jobs")
+@login_required
+def task_scheduler_list():
+    print(f"{current_app.root_path}")
+    jobs = list_pssc_tasks()
+    return render_template("bastion/task_scheduler_jobs.html", jobs=jobs)

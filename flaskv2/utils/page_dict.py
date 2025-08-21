@@ -30,5 +30,15 @@ side_nav_items = {
                 },
             ]
         },
+        ".38 Bastion": {
+            "ref": "collapseBastion",
+            "icon": "fas fa-laptop-code",
+            "child_links": [
+                {
+                    "text": "Task Scheduler Jobs",
+                    "route": "main.task_scheduler_list",
+                }
+            ]
+        }
     },
 }
