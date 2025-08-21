@@ -47,8 +47,18 @@
     <div class="alert alert-warning mb-3 py-2">
       <div class="fw-semibold mb-1">Notes</div>
       <ul class="mb-0">
-        <li><u>Autofill SR</u> works only if MIG’s current-month Service Release exists — i.e., stream <code>REL_YYYY_MM</code> for this month is available. If it isn’t, you’ll see an error and no fields will be autofilled.</li>
+        <li><strong>Autofill SR</strong> works only if MIG’s current-month Service Release exists — i.e., stream <code>REL_YYYY_MM</code> for this month is available. If it isn’t, you’ll see an error and no fields will be autofilled.</li>
         <li>You can upload to LARS root directory by leaving the S3 Destination field empty. However, this is normally reserved for the current month's SR builds.</li>
+        <li><strong>Use MIG stream</strong> auto-generates the destination suffix from the selected (or manually entered) MIG stream:
+          <ul class="mb-1">
+            <li><code>MAINLINE</code> → <code>MAINLINE</code></li>
+            <li><code>HOTFIX_*</code> → <code>HOTFIX/&lt;stream&gt;</code></li>
+            <li><code>feature*</code> → <code>FEATURE/&lt;stream&gt;</code></li>
+            <li><code>intINT_yyyy_mm</code> → <code>TEMP/&lt;MMM&gt;</code></li>
+            <li><code>int*</code> → <code>INT/&lt;stream&gt;</code></li>
+          </ul>
+          <em>REL_*</em> is excluded because Service Releases use <code>MT/&lt;MMM&gt;</code> via <strong>Autofill SR</strong>. You can still edit the value manually if needed.
+        </li>
       </ul>
       
     </div>
@@ -178,7 +188,6 @@
             name="migops_lars_suffix"
             class="form-control"
             placeholder="e.g., MT/month or INT/intMSCM..."
-            required
           />
         </div>
 

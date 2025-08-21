@@ -518,6 +518,10 @@ $(function () {
     // feature*
     if (low.startsWith("feature")) return `FEATURE/${raw}`;
 
+    // REL_*
+    // const x = /^REL_(\d{4})_(\d{2})$/i.exec(raw);
+    // if (x) return `TEMP/${MMM_from_mm(m[2])}`;
+
     // int variations
     // 1) intINT_yyyy_mm  -> TEMP/MMM
     const m = /^intINT_(\d{4})_(\d{2})$/i.exec(raw);
