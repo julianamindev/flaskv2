@@ -3,30 +3,27 @@
 
 {% block extra_head %}
   <link rel="stylesheet" href="https://cdn.datatables.net/2.0.8/css/dataTables.bootstrap5.min.css">
-  <style>
-    .dt-center { text-align:center; }
-    .nowrap { white-space: nowrap; }
-  </style>
 {% endblock %}
 
 {% block main %}
 <div class="container-fluid py-3">
   <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-    <h4 class="mb-0">Windows Task Scheduler — PSSC jobs</h4>
+    <h4 class="mb-0">Bastion Task Scheduler — PSSC automation jobs</h4>
     <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Refresh</button>
   </div>
 
   <div class="card shadow-sm">
     <div class="card-body">
       <div class="table-responsive">
-        <table id="jobsTable" class="table table-striped table-hover align-middle">
+        <table id="jobsTable" class="table table-striped table-hover table-bordered">
           <thead>
             <tr>
               <th>Name</th>
               <th>Regularity</th>
-              <th class="dt-center">Next Run</th>
-              <th class="dt-center">Last Run</th>
-              <th class="dt-center">Result</th>
+              <th>State</th>
+              <th class="text-start">Next Run</th>
+              <th class="text-start">Last Run</th>
+              <th>Result</th>
             </tr>
           </thead>
           <tbody>
@@ -34,14 +31,27 @@
               <tr>
                 <td class="fw-medium">{{ j.name }}</td>
                 <td style="max-width: 520px;">{{ j.schedule }}</td>
-                <td class="dt-center nowrap">{{ j.next_run }}</td>
-                <td class="dt-center nowrap">{{ j.last_run }}</td>
-                <td class="dt-center">
-                  {% if j.success %}
-                    <span class="badge text-bg-success" title="Code: {{ j.last_result }}">✓ Success</span>
+                <td>
+                  {% if j.state == 'Ready' %}
+                    <span class="badge text-bg-success" title="Code: {{ j.state }}">Ready</span>
+                  {% elif j.state == 'Disabled' %}
+                    <span class="badge text-bg-warning" title="Code: {{ j.state }}">Disabled</span>
                   {% else %}
-                    <span class="badge text-bg-danger" title="Code: {{ j.last_result }}">✕ Failed</span>
+                    <span class="badge text-bg-danger" title="Code: {{ j.state }}">Unknown</span>
                   {% endif %}
+                </td>
+                <td class="text-start">{{ j.next_run }}</td>
+                <td class="text-start">{{ j.last_run }}</td>
+                <td>
+                    {% if j.success == 'success' %}
+                        <span class="badge text-bg-success" title="Code: {{ j.success }}">Success</span>
+                    {% elif j.success == 'not yet run' %}
+                        <span class="badge text-bg-warning" title="Code: {{ j.success }}">Not Yet Started</span>
+                    {% elif j.success == 'running' %}
+                        <span class="badge text-bg-info" title="Code: {{ j.success }}">Running</span>
+                    {% else %}
+                        <span class="badge text-bg-danger" title="Code: {{ j.success }}">Error</span>
+                    {% endif %}
                 </td>
               </tr>
             {% endfor %}

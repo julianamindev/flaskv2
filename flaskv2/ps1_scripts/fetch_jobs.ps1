@@ -114,6 +114,18 @@ function DescribeFromCim($t){
 $tasks = Get-ScheduledTask -TaskName "$Prefix*" -ErrorAction SilentlyContinue
 if (-not $tasks) { @() | ConvertTo-Json -Depth 4; exit }
 
+
+$codeMap = @{
+  0       = 'success'          # 0x0
+  1       = 'error'           # generic schtasks 0x1
+  267009  = 'ready'            # 0x41301
+  267010  = 'running'          # 0x41302
+  267011  = 'not yet run'      # 0x41303
+  267012  = 'no more runs'     # 0x41304
+  267014  = 'stopped by user'  # 0x41306
+  267015  = 'no triggers/disabled' # 0x41307
+}
+
 $out = @()
 foreach($t in $tasks){
   try {
@@ -130,17 +142,24 @@ foreach($t in $tasks){
   # precompute (no inline "if" in hashtable)
   $nextRunStr = ''; if ($info -and $info.NextRunTime) { $nextRunStr = $info.NextRunTime.ToString('yyyy-MM-dd HH:mm') }
   $lastRunStr = ''; if ($info -and $info.LastRunTime) { $lastRunStr = $info.LastRunTime.ToString('yyyy-MM-dd HH:mm') }
-  $lastRes    = $null; if ($info) { $lastRes = $info.LastTaskResult }
-  $success    = $false; if ($info -and $info.LastTaskResult -eq 0) { $success = $true }
+  # $lastRes    = $null; if ($info) { $lastRes = $info.LastTaskResult }
+  $code       = if ($info) { [int]$info.LastTaskResult } else { $null }
+  $neverRun   = ($info -and $info.LastRunTime -eq [datetime]::MinValue)
+  $success =
+    if ($neverRun) { 'not yet run' }
+    elseif ($code -ne $null -and $codeMap.ContainsKey($code)) { $codeMap[$code] }
+    elseif ($code -eq 0) { 'success' }
+    elseif ($code -ne $null) { 'error' }   # anything nonzero that wasn't mapped
+    else { 'unknown' }
+
 
   $out += [pscustomobject]@{
     Name           = $t.TaskName
     NameNoPrefix   = ($t.TaskName -replace ('^' + [regex]::Escape($Prefix)),'')
     Regularity     = $regular
+    State          = $t.State.ToString()
     NextRun        = $nextRunStr
     LastRun        = $lastRunStr
-    LastTaskResult = $lastRes
-    State          = $t.State
     Success        = $success
   }
 }

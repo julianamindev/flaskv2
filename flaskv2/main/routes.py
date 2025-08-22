@@ -301,11 +301,12 @@ def lars2aws_upload_item():
 @main.route("/aws/instances")
 @login_required
 def instances():
+    current_app.app_log.info("view_stacks_page")
     return render_template('aws/instances.html')
 
 @main.route("/bastion/task-scheduler-jobs")
 @login_required
 def task_scheduler_list():
-    print(f"{current_app.root_path}")
+    current_app.app_log.info("view_task_scheduler_jobs")
     jobs = list_pssc_tasks()
     return render_template("bastion/task_scheduler_jobs.html", jobs=jobs)

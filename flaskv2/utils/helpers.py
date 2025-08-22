@@ -424,15 +424,12 @@ PS_EXE = _find_powershell()
 
 def _get_ps1_path():
     local = os.path.join(current_app.root_path, "ps1_scripts", "fetch_jobs.ps1")
-    print(f"{local=}") 
     return local
 
 
 def _run_ps1_and_parse(prefix="PSSC-"):
-    print("_run_ps1_and_parse")
     ps1 = _get_ps1_path()
     if not ps1:
-        print("not ps1?")
         current_app.logger.warning("ps1_not_found")
         return None
 
@@ -467,19 +464,38 @@ def list_pssc_tasks():
             rows.append({
                 "name": name_no_prefix,
                 "schedule": r.get("Regularity") or "—",
+                "state": r.get("State") or "—",
                 "next_run": r.get("NextRun") or "—",
                 "last_run": r.get("LastRun") or "—",
-                "success": bool(r.get("Success")),
-                "last_result": str(r.get("LastTaskResult") if r.get("LastTaskResult") is not None else ""),
+                "success": r.get("Success"),
+                # "last_result": str(r.get("LastTaskResult") if r.get("LastTaskResult") is not None else ""),
             })
         rows.sort(key=lambda x: x["name"].lower())
         return rows
 
-    # keep your existing CSV fallback here
+    # CSV fallback here
     return _schtasks_csv()
 
 def _schtasks_csv():
-    """Fallback: schtasks CSV (/v). Limited schedule info for v2 tasks."""
+    """Fallback: schtasks CSV (/v). Shape + labels match fetch_jobs.ps1 output."""
+    def _first(d, *names):
+        for n in names:
+            v = d.get(n)
+            if isinstance(v, str):
+                v = v.strip()
+            if v:
+                return v
+        return ""
+
+    def _parse_result(code_str: str | None) -> int | None:
+        if not code_str:
+            return None
+        s = code_str.strip()
+        try:
+            return int(s, 16) if s.lower().startswith("0x") else int(s)
+        except Exception:
+            return None
+
     try:
         raw = subprocess.check_output(
             ["schtasks", "/query", "/fo", "CSV", "/v"],
@@ -487,33 +503,65 @@ def _schtasks_csv():
             creationflags=CREATE_NO_WINDOW,
         )
     except subprocess.CalledProcessError as e:
-        current_app.logger.error("schtasks_query_failed", extra={"returncode": e.returncode, "output": e.output.decode(errors="replace")})
+        current_app.logger.error(
+            "schtasks_query_failed",
+            extra={"returncode": e.returncode, "output": e.output.decode(errors="replace")}
+        )
         return []
 
     text = raw.decode("utf-8", errors="replace")
     reader = csv.DictReader(io.StringIO(text))
-    rows = []
+    rows: list[dict] = []
+
     for r in reader:
-        task_name = (r.get("TaskName") or r.get("Task Name") or "").strip()
+        task_name = _first(r, "TaskName", "Task Name")
         if not task_name.startswith(r"\PSSC-"):
             continue
-        display = task_name.lstrip("\\")
-        no_prefix = display[5:] if display.startswith("PSSC-") else display
 
-        schedule = (r.get("Schedule") or r.get("Schedule Type") or "").strip()
-        # Next/Last run:
-        next_run = (r.get("Next Run Time") or "").strip()
-        last_run = (r.get("Last Run Time") or "").strip()
-        last_result_raw = (r.get("Last Result") or "").strip()
+        display    = task_name.lstrip("\\")
+        no_prefix  = display[5:] if display.startswith("PSSC-") else display
+        schedule   = _first(r, "Schedule", "Schedule Type")
 
-        success = last_result_raw in ("0x0", "0X0", "0")
+        # Normalize state similar to your PS output
+        state_raw  = _first(r, "Status", "Scheduled Task State")
+        if state_raw:
+            sr = state_raw.strip().lower()
+            if sr.startswith("ready"):
+                state = "Ready"
+            elif sr.startswith("disabled"):
+                state = "Disabled"
+            elif sr.startswith("running"):
+                state = "Running"
+            else:
+                state = state_raw
+        else:
+            state = "Unknown"
+
+        next_run   = _first(r, "Next Run Time")
+        last_run   = _first(r, "Last Run Time")
+        last_res_s = _first(r, "Last Result")
+        code       = _parse_result(last_res_s)
+
+        # Match your fetch_jobs.ps1 semantics
+        never_run  = (not last_run) or last_run.upper() == "N/A" or code == 0x41303
+        if never_run:
+            success = "not yet run"
+        elif code == 0:
+            success = "success"
+        elif code is None:
+            success = "unknown"
+        else:
+            success = "failed"
+
         rows.append({
             "name": no_prefix,
             "schedule": schedule or "—",
+            "state": state or "—",
             "next_run": next_run or "—",
             "last_run": last_run or "—",
-            "success": success,
-            "last_result": str(last_result_raw or ""),
+            "success": success,  # string label, not boolean
+            # "last_result": last_res_s or "",  # keep if you need to show raw code later
         })
+
     rows.sort(key=lambda x: x["name"].lower())
     return rows
