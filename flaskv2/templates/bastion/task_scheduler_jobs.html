@@ -14,7 +14,7 @@
         <table id="datatablesSimple">
           <thead>
             <tr>
-              <th>Name</th>
+              <th>Task Name</th>
               <th>Schedule</th>
               <th>State</th>
               <th>Next Run</th>
@@ -28,22 +28,24 @@
                 <td>{{ j.name }}</td>
                 <td>{{ j.schedule }}</td>
                 <td>
-                  {% if j.state == 'Ready' %}
-                    <span class="badge text-bg-success" title="Code: {{ j.state }}">Ready</span>
-                  {% elif j.state == 'Disabled' %}
-                    <span class="badge text-bg-warning" title="Code: {{ j.state }}">Disabled</span>
-                  {% else %}
-                    <span class="badge text-bg-danger" title="Code: {{ j.state }}">Unknown</span>
-                  {% endif %}
+                    {% if j.state|lower == 'ready' %}
+                        <span class="badge text-bg-success" title="Code: {{ j.state }}">Ready</span>
+                    {% elif j.state|lower == 'disabled' %}
+                        <span class="badge text-bg-warning" title="Code: {{ j.state }}">Disabled</span>
+                    {% elif j.state|lower == 'running' %}
+                        <span class="badge text-bg-info" title="Code: {{ j.state }}">Running</span>
+                    {% else %}
+                        <span class="badge text-bg-danger" title="Code: {{ j.state }}">Unknown</span>
+                    {% endif %}
                 </td>
                 <td>{{ j.next_run }}</td>
                 <td>{{ j.last_run }}</td>
                 <td>
-                    {% if j.success == 'success' %}
+                    {% if j.success|lower == 'success' %}
                         <span class="badge text-bg-success" title="Code: {{ j.success }}">Success</span>
-                    {% elif j.success == 'not yet run' %}
+                    {% elif j.success|lower == 'not yet run' %}
                         <span class="badge text-bg-warning" title="Code: {{ j.success }}">Not Yet Started</span>
-                    {% elif j.success == 'running' %}
+                    {% elif j.success|lower == 'running' %}
                         <span class="badge text-bg-info" title="Code: {{ j.success }}">Running</span>
                     {% else %}
                         <span class="badge text-bg-danger" title="Code: {{ j.success }}">Error</span>

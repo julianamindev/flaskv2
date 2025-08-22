@@ -219,8 +219,8 @@ if (-not $tasks) { @() | ConvertTo-Json -Depth 4; exit }
 $codeMap = @{
   0       = 'success'          # 0x0
   1       = 'error'           # generic schtasks 0x1
-  267009  = 'ready'            # 0x41301
-  267010  = 'running'          # 0x41302
+  267009  = 'running'          # 0x41301
+  267010  = 'disabled'         # 0x41302
   267011  = 'not yet run'      # 0x41303
   267012  = 'no more runs'     # 0x41304
   267014  = 'stopped by user'  # 0x41306
