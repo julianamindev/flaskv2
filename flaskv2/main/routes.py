@@ -365,7 +365,6 @@ def instances():
 
     # counts for the summary header
     total_stacks = len(stacks)
-    print(f"{total_stacks=}")
     state_counts = Counter(s["state"] for s in stacks)
 
     states = ["Running", "Off", "Opening", "Closing", "Degraded", "Unknown"]
