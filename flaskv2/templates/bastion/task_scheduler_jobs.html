@@ -25,8 +25,8 @@
           <tbody>
             {% for j in jobs %}
               <tr>
-                <td class="fw-medium">{{ j.name }}</td>
-                <td style="max-width: 520px;">{{ j.schedule }}</td>
+                <td>{{ j.name }}</td>
+                <td>{{ j.schedule }}</td>
                 <td>
                   {% if j.state == 'Ready' %}
                     <span class="badge text-bg-success" title="Code: {{ j.state }}">Ready</span>
@@ -36,8 +36,8 @@
                     <span class="badge text-bg-danger" title="Code: {{ j.state }}">Unknown</span>
                   {% endif %}
                 </td>
-                <td class="text-start">{{ j.next_run }}</td>
-                <td class="text-start">{{ j.last_run }}</td>
+                <td>{{ j.next_run }}</td>
+                <td>{{ j.last_run }}</td>
                 <td>
                     {% if j.success == 'success' %}
                         <span class="badge text-bg-success" title="Code: {{ j.success }}">Success</span>
