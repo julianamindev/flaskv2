@@ -1,28 +1,24 @@
 {% extends "base/home/home-base.html" %}
+
 {% block title %}Task Scheduler Jobs{% endblock %}
 
-{% block extra_head %}
-  <link rel="stylesheet" href="https://cdn.datatables.net/2.0.8/css/dataTables.bootstrap5.min.css">
-{% endblock %}
-
 {% block main %}
+<main>
 <div class="container-fluid py-3">
-  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-    <h4 class="mb-0">Bastion Task Scheduler — PSSC automation jobs</h4>
-    <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Refresh</button>
-  </div>
-
-  <div class="card shadow-sm">
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <h4 class="mb-0">Bastion Task Scheduler — PSSC automation jobs</h4>
+        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Refresh</button>
+    </div>
+   
     <div class="card-body">
-      <div class="table-responsive">
-        <table id="jobsTable" class="table table-striped table-hover table-bordered">
+        <table id="datatablesSimple">
           <thead>
             <tr>
               <th>Name</th>
               <th>Schedule</th>
               <th>State</th>
-              <th class="text-start">Next Run</th>
-              <th class="text-start">Last Run</th>
+              <th>Next Run</th>
+              <th>Last Run</th>
               <th>Result</th>
             </tr>
           </thead>
@@ -60,21 +56,11 @@
       </div>
       <small class="text-muted">Showing only tasks with names starting with <code>PSSC-</code>.</small>
     </div>
-  </div>
 </div>
+</main>
 {% endblock %}
 
 {% block extra_scripts %}
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/2.0.8/js/dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/2.0.8/js/dataTables.bootstrap5.min.js"></script>
-  <script>
-    $(function () {
-      $("#jobsTable").DataTable({
-        order: [[0, "asc"]],
-        pageLength: 25,
-        stateSave: true
-      });
-    });
-  </script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/umd/simple-datatables.min.js" crossorigin="anonymous"></script>
+    <script src="{{ url_for('static', filename='js/datatables-simple-demo.js') }}"></script>
 {% endblock %}
