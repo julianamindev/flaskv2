@@ -28,16 +28,21 @@ function DescribeFromXml($xml){
 
   foreach($n in $xml.SelectNodes('//t:Triggers/*', $nsm)){
     if ($n.LocalName -eq 'CalendarTrigger') {
-      $start = [datetime]$n.SelectSingleNode('t:StartBoundary',$nsm).InnerText
-      $time  = $start.ToString('HH:mm')
+      # robust time (handles Z/offset)
+      $sbStr = $n.SelectSingleNode('t:StartBoundary',$nsm).InnerText
+      try { $time = ([datetimeoffset]$sbStr).ToLocalTime().ToString('HH:mm') }
+      catch { try { $time = ([datetime]$sbStr).ToString('HH:mm') } catch { $time = '—' } }
 
       if ($n.SelectSingleNode('t:ScheduleByMonth',$nsm)) {
         $isLast = $false
         if ($n.SelectSingleNode('t:ScheduleByMonth/t:DaysOfMonth/t:LastDayOfMonth',$nsm)) { $isLast = $true }
-        foreach ($d in $n.SelectNodes('t:ScheduleByMonth/t:DaysOfMonth/t:Day',$nsm)) { if ($d.InnerText -eq 'Last') { $isLast = $true } }
+        foreach ($d in $n.SelectNodes('t:ScheduleByMonth/t:DaysOfMonth/t:Day',$nsm)) {
+          if ($d.InnerText -eq 'Last') { $isLast = $true }
+        }
         if ($isLast) { $dom = 'last day of month' }
         else {
-          $dom = (JoinInnerText ($n.SelectNodes('t:ScheduleByMonth/t:DaysOfMonth/t:Day',$nsm)))
+          $daysNodes = $n.SelectNodes('t:ScheduleByMonth/t:DaysOfMonth/t:Day',$nsm)
+          $dom = ($daysNodes | ForEach-Object { $_.InnerText }) -join ', '
           if (-not $dom) { $dom = 'days' }
         }
         $descs += "Monthly on $dom at $time"
@@ -48,28 +53,76 @@ function DescribeFromXml($xml){
         if ($ival -gt 1) { $descs += "Every $ival days at $time" } else { $descs += "Every day at $time" }
       }
       elseif ($n.SelectSingleNode('t:ScheduleByWeek',$nsm)) {
-        $days = JoinLocalNames ($n.SelectNodes('t:ScheduleByWeek/t:DaysOfWeek/*',$nsm)); if(-not $days){ $days='—' }
+        $days = ($n.SelectNodes('t:ScheduleByWeek/t:DaysOfWeek/*',$nsm) | ForEach-Object { $_.LocalName }) -join ', '
+        if(-not $days){ $days='—' }
         $wNode = $n.SelectSingleNode('t:ScheduleByWeek/t:WeeksInterval',$nsm)
         $w = if($wNode){ [int]$wNode.InnerText } else { 1 }
         if ($w -gt 1) { $descs += "Weekly on $days at $time (every $w weeks)" } else { $descs += "Weekly on $days at $time" }
       }
       elseif ($n.SelectSingleNode('t:ScheduleByMonthDayOfWeek',$nsm)) {
-        $weeks = JoinLocalNames ($n.SelectNodes('t:ScheduleByMonthDayOfWeek/t:Weeks/*',$nsm)); if(-not $weeks){ $weeks='weeks' }
-        $days  = JoinLocalNames ($n.SelectNodes('t:ScheduleByMonthDayOfWeek/t:DaysOfWeek/*',$nsm)); if(-not $days){ $days='days' }
+        # --- Time (keep as-is but robust) ---
+        $sbStr = $n.SelectSingleNode('t:StartBoundary',$nsm).InnerText
+        try { $time = ([datetimeoffset]$sbStr).ToLocalTime().ToString('HH:mm') }
+        catch { try { $time = ([datetime]$sbStr).ToString('HH:mm') } catch { $time = '—' } }
+
+        # --- Weeks mapping (handles <Week>Last</Week> and <LastWeek/> forms) ---
+        $weekNodes = $n.SelectNodes('t:ScheduleByMonthDayOfWeek/t:Weeks/*', $nsm)
+        $ord = @()
+        foreach ($w in $weekNodes) {
+          switch ($w.LocalName) {
+            'Week' {
+              switch ($w.InnerText) {
+                'First'  { $ord += '1st' }
+                'Second' { $ord += '2nd' }
+                'Third'  { $ord += '3rd' }
+                'Fourth' { $ord += '4th' }
+                'Last'   { $ord += 'last' }
+                default  { if ($w.InnerText) { $ord += $w.InnerText } }
+              }
+            }
+            'FirstWeek'  { $ord += '1st' }
+            'SecondWeek' { $ord += '2nd' }
+            'ThirdWeek'  { $ord += '3rd' }
+            'FourthWeek' { $ord += '4th' }
+            'LastWeek'   { $ord += 'last' }
+          }
+        }
+        if (-not $ord) { $ord = @('week') }
+        $weeks = $ord -join '/'
+
+        # --- Days of week (names come from element names: Monday..Sunday) ---
+        $dayNodes = $n.SelectNodes('t:ScheduleByMonthDayOfWeek/t:DaysOfWeek/*', $nsm)
+        $days = ($dayNodes | ForEach-Object { $_.LocalName }) -join ', '
+        if (-not $days) { $days = 'days' }
+
         $descs += "Monthly on $weeks $days at $time"
       }
-      else { $descs += 'Calendar trigger' }
+      else {
+        $descs += 'Calendar trigger'
+      }
 
       $rep = $n.SelectSingleNode('t:Repetition/t:Interval',$nsm)
       if ($rep) { $descs[$descs.Count-1] += ', every ' + (PrettyISO $rep.InnerText) }
     }
-    elseif ($n.LocalName -eq 'TimeTrigger') { $descs += ('Once at ' + ([datetime]$n.SelectSingleNode('t:StartBoundary',$nsm).InnerText).ToString('yyyy-MM-dd HH:mm')) }
+    elseif ($n.LocalName -eq 'TimeTrigger') { 
+      $descs += ('Once at ' + ([datetime]$n.SelectSingleNode('t:StartBoundary',$nsm).InnerText).ToString('yyyy-MM-dd HH:mm')) 
+    }
     elseif ($n.LocalName -eq 'BootTrigger') { $descs += 'At startup' }
     elseif ($n.LocalName -eq 'LogonTrigger') { $descs += 'At logon' }
     elseif ($n.LocalName -eq 'IdleTrigger')  { $descs += 'On idle' }
     else { $descs += $n.LocalName }
   }
   if($descs.Count -eq 0){ '—' } else { $descs -join ' | ' }
+}
+
+function Get-TriggerTimeHHmm($trig) {
+  $s = [string]$trig.StartBoundary
+  try {
+    # Handles Z or offset; converts to local time cleanly
+    return ([datetimeoffset]$s).ToLocalTime().ToString('HH:mm')
+  } catch {
+    try { return ([datetime]$s).ToString('HH:mm') } catch { return '—' }
+  }
 }
 
 function DescribeFromCim($t){
@@ -90,14 +143,62 @@ function DescribeFromCim($t){
       }
       'MSFT_TaskMonthlyTrigger' { if($trig.RunOnLastDayOfMonth){ $dom='last day of month' } else { $dom = ($trig.DaysOfMonth -join ', ') }; if(-not $dom){ $dom='days' }; $descs += "Monthly on $dom at $time" }
       'MSFT_TaskMonthlyDOWTrigger' {
-        $w = $trig.WeeksOfMonth.ToString(); if(-not $w){ $w = $trig.WhichWeeks.ToString() }
-        $weeks = ($w -replace '\s+',''); if(-not $weeks){ $weeks='weeks' }
-        $s = $trig.DaysOfWeek.ToString()
-        $names='Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'
-        $picked=@(); foreach($n in $names){ if($s -like "*$n*"){ $picked += $n } }
-        $days = ($picked -join ', '); if(-not $days){ $days='days' }
-        $descs += "Monthly on $weeks $days at $time"
+        $time = Get-TriggerTimeHHmm $trig
+
+        # --- Which week(s) ---
+        $wkMask = 0
+        # CIM can expose as enum or int; try both
+        try { $wkMask = [int]$trig.WeeksOfMonth.Value } catch {
+          try { $wkMask = [int]$trig.WeeksOfMonth } catch { $wkMask = 0 }
+        }
+
+        # COM-style sometimes exposes text list; fold it into the mask if present
+        if ($trig.PSObject.Properties.Name -contains 'WhichWeeks') {
+          $ww = [string]$trig.WhichWeeks
+          if ($ww -match 'First')  { $wkMask = $wkMask -bor 1 }
+          if ($ww -match 'Second') { $wkMask = $wkMask -bor 2 }
+          if ($ww -match 'Third')  { $wkMask = $wkMask -bor 4 }
+          if ($ww -match 'Fourth') { $wkMask = $wkMask -bor 8 }
+          if ($ww -match 'Last')   { $wkMask = $wkMask -bor 16 }
+        }
+
+        # Explicit boolean, when present
+        $isLast = $false
+        if ($trig.PSObject.Properties.Name -contains 'RunOnLastWeekOfMonth') {
+          $isLast = [bool]$trig.RunOnLastWeekOfMonth
+        }
+        if (($wkMask -band 16) -ne 0) { $isLast = $true }
+
+        $ord = @()
+        if ($wkMask -band 1) { $ord += '1st' }
+        if ($wkMask -band 2) { $ord += '2nd' }
+        if ($wkMask -band 4) { $ord += '3rd' }
+        if ($wkMask -band 8) { $ord += '4th' }
+        if ($isLast)         { $ord += 'last' }
+
+        $weeksText = if ($ord) { ($ord -join '/') } else { 'week' }
+
+        # --- Day(s) of week (keep your existing approach; bitmask-friendly fallback) ---
+        $names = 'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'
+        $picked = @()
+
+        # Prefer bitmask if the provider exposes it as an int
+        $dowMask = 0
+        try { $dowMask = [int]$trig.DaysOfWeek } catch { $dowMask = 0 }
+        if ($dowMask -gt 0) {
+          for ($i=0; $i -lt 7; $i++) {
+            if ($dowMask -band (1 -shl $i)) { $picked += $names[$i] }
+          }
+        } else {
+          # Fallback: parse the string form
+          $s = [string]$trig.DaysOfWeek
+          foreach ($n in $names) { if ($s -like "*$n*") { $picked += $n } }
+        }
+        $days = if ($picked) { $picked -join ', ' } else { 'days' }
+
+        $descs += "Monthly on $weeksText $days at $time"
       }
+
       'MSFT_TaskTimeTrigger'    { $descs += ("Once at " + $start.ToString('yyyy-MM-dd HH:mm')) }
       'MSFT_TaskBootTrigger'    { $descs += 'At startup' }
       'MSFT_TaskLogonTrigger'   { $descs += 'At logon' }
