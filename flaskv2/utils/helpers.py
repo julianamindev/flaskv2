@@ -1,6 +1,6 @@
 import json
 import subprocess
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 import boto3
 import csv, io, requests, os, re
 
@@ -679,3 +679,33 @@ def build_prefix_index_from_keys(keys: list[str]) -> dict[str, list[str]]:
         out[f"{category}/{sub}/"].append(filename)
 
     return dict(out)
+
+TARGET_META_FILES = {
+    "Install-LMMIG.jar",
+    "Install-LMIEFIN.jar",
+    "Install-LMHCM.jar",
+    "LANDMARK.jar",
+    "grid-installer.jar",
+}
+
+def get_object_version_meta(bucket: str, root: str, rel_key: str) -> Optional[Dict[str, Any]]:
+    """
+    Return {'version': '<value>'} if the object has version set.
+    Only attempts for TARGET_META_FILES; returns None otherwise.
+    rel_key is relative to `root` (e.g., 'MT/AUG/Install-LMMIG.jar').
+    """
+    basename = os.path.basename(rel_key)
+    if basename not in TARGET_META_FILES:
+        return None
+
+    s3 = boto3.client("s3")
+    full_key = f"{root}{rel_key}"
+    try:
+        resp = s3.head_object(Bucket=bucket, Key=full_key)
+    except Exception:
+        return None
+
+    # boto3 lowercases user-metadata keys
+    meta = resp.get("Metadata") or {}
+    ver = meta.get("version")
+    return {"version": ver} if ver else None

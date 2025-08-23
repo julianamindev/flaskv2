@@ -6,7 +6,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
 
 
 main = Blueprint('main', __name__)
@@ -340,3 +340,13 @@ def s3_builds():
 
 
     return render_template("aws/s3_builds.html", prefix_map=prefix_map)
+
+@main.route("/api/s3/object_meta")
+@login_required
+def s3_object_meta():
+    rel_key = (request.args.get("key") or "").strip()
+    if not rel_key:
+        return jsonify({"ok": False, "error": "missing key"}), 400
+
+    data = get_object_version_meta(bucket="migops", root="LARS/", rel_key=rel_key)
+    return jsonify({"ok": True, "metadata": data})

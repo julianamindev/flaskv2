@@ -41,8 +41,17 @@
 <script src="https://cdn.datatables.net/2.0.8/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
-    // Log what the server sent:
-    // console.log("prefix_map_json =", {{ prefix_map_json|default('"{}"')|safe }});
+    // Files that should show a version in the Metadata column
+    const NEEDS_META_SET = new Set([
+        "Install-LMMIG.jar",
+        "Install-LMIEFIN.jar",
+        "Install-LMHCM.jar",
+        "LANDMARK.jar",
+        "grid-installer.jar",
+    ]);
+    // Others like MIG_scripts.jar, mt_dependencies.txt will show "—"
+
+
 
     // Parse (since we pre-serialized in the route):
     const PREFIX_MAP = {{ (prefix_map | default({})) | tojson | safe }};
@@ -61,27 +70,61 @@
         };
     });    
 
+  // Child row HTML (includes Metadata column between S3 URI and Actions)
     function renderChild(row) {
-        const s3Base = `s3://${BUCKET}/${ROOT}/${row.keyPrefix}`;
-        const fileRows = row.files.map(name => `
+        const s3Base = `s3://${BUCKET}/${ROOT}/${row.keyPrefix}`; // keyPrefix "" => ends with /
+        const fileRows = row.files.map(name => {
+            const s3Uri  = s3Base + name;
+            const relKey = `${row.keyPrefix}${name}`; // relative to LARS/
+            const needs  = NEEDS_META_SET.has(name);
+            return `
             <tr>
                 <td class="py-1">${name}</td>
-                <td class="py-1"><code class="small">${s3Base + name}</code></td>
+                <td class="py-1"><code class="small">${s3Uri}</code></td>
+                <td class="py-1 meta-cell" data-key="${relKey}">${needs ? "…" : "—"}</td>
                 <td class="py-1 text-end">
-                <button class="btn btn-sm btn-outline-secondary" data-copy="${s3Base + name}">Copy S3 URI</button>
+                <button class="btn btn-sm btn-outline-secondary" data-copy="${s3Uri}">Copy S3 URI</button>
                 </td>
-            </tr>`).join("");
+            </tr>`;
+        }).join("");
 
         return `
         <div class="p-2">
             <div class="fw-semibold mb-2">Files in <span class="text-nowrap"><code>${row.displayPrefix}</code></span></div>
             <div class="table-responsive">
-            <table class="table table-sm mb-0">
-                <thead><tr><th>File</th><th>S3 URI</th><th class="text-end">Actions</th></tr></thead>
-                <tbody>${fileRows || `<tr><td colspan="3" class="text-muted">No files</td></tr>`}</tbody>
-            </table>
+                <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                    <th>File</th>
+                    <th>S3 URI</th>
+                    <th>Metadata</th>
+                    <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>${fileRows || `<tr><td colspan="4" class="text-muted">No files</td></tr>`}</tbody>
+                </table>
             </div>
         </div>`;
+    }
+
+  // Fill Metadata cells by calling the API for needed files
+    function hydrateMetaCellsFor(trElem) {
+        const $child = $(trElem).next("tr"); // DataTables puts child in next TR
+        $child.find("td.meta-cell").each(function () {
+            const td   = this;
+            const key  = td.getAttribute("data-key") || "";
+            if (!key) { td.textContent = "—"; return; }
+            const base = key.split("/").pop();
+            if (!NEEDS_META_SET.has(base)) { td.textContent = "—"; return; }
+
+            td.textContent = "…";
+            fetch(`/api/s3/object_meta?key=${encodeURIComponent(key)}`)
+            .then(r => r.json())
+            .then(({ ok, metadata }) => {
+                td.textContent = (ok && metadata && metadata.version) ? metadata.version : "—";
+            })
+            .catch(() => { td.textContent = "—"; });
+        });
     }
 
     // Copy buttons (event delegation)
@@ -92,10 +135,12 @@
         navigator.clipboard.writeText(text).then(() => {
             btn.textContent = "Copied!";
             setTimeout(() => (btn.textContent = "Copy S3 URI"), 1200);
+        }).catch(() => {
+            alert("Copy failed. You can select the URI text manually.");
         });
     });
 
-    // jQuery ready: runs immediately if DOM already ready
+    // DataTable init + expand handling
     $(function () {
         const dt = $('#buildsTable').DataTable({
             data: rows,
@@ -113,10 +158,15 @@
         $('#buildsTable tbody').on('click', 'td.dt-control', function () {
             const tr  = $(this).closest('tr');
             const row = dt.row(tr);
-            if (row.child.isShown()) { row.child.hide(); tr.removeClass('shown'); }
-            else { row.child(renderChild(row.data())).show(); tr.addClass('shown'); }
+            if (row.child.isShown()) {
+                row.child.hide();
+                tr.removeClass('shown');
+            } else {
+                row.child(renderChild(row.data())).show();
+                tr.addClass('shown');
+                hydrateMetaCellsFor(tr[0]); // fetch versions for this child panel
+            }
         });
     });
-
 </script>
 {% endblock %}
