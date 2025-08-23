@@ -1,9 +1,122 @@
 {% extends "base/home/home-base.html" %}
-
 {% block title %}S3 Builds{% endblock %}
 
+{% block extra_head %}
+  <!-- DataTables Bootstrap 5 styles -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.0.8/css/dataTables.bootstrap5.min.css">
+{% endblock %}
+
 {% block main %}
-<main>
-    <h1>S3 builds</h1>
-</main>
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <h4 class="mb-0">S3 Builds (Test Data)</h4>
+    <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Refresh</button>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <table id="buildsTable" class="table table-striped table-hover w-100 align-middle">
+        <thead>
+        <tr>
+          <th style="width:2rem;"></th>     <!-- expand control -->
+          <th>Prefix</th>
+          <th>Category</th>
+          <th class="text-end">Files</th>
+        </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
+{% block extra_scripts %}
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>  
+
+<!-- DataTables + Bootstrap 5 integration -->
+<script src="https://cdn.datatables.net/2.0.8/js/dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/2.0.8/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+    // Log what the server sent:
+    // console.log("prefix_map_json =", {{ prefix_map_json|default('"{}"')|safe }});
+
+    // Parse (since we pre-serialized in the route):
+    const PREFIX_MAP = {{ (prefix_map | default({})) | tojson | safe }};
+
+    const BUCKET = "migops";
+    const ROOT   = "LARS";
+
+    const rows = Object.entries(PREFIX_MAP).map(([prefix, files]) => {
+        const isRoot = (prefix === "LARS/" || prefix === "" || prefix === "/");
+        return {
+            displayPrefix: isRoot ? "LARS/" : prefix,
+            category:      isRoot ? "ROOT"  : prefix.split("/")[0],
+            keyPrefix:     isRoot ? ""      : prefix, // used to build s3://migops/LARS/<keyPrefix>...
+            files,
+            files_count:   files.length
+        };
+    });    
+
+    function renderChild(row) {
+        const s3Base = `s3://${BUCKET}/${ROOT}/${row.keyPrefix}`;
+        const fileRows = row.files.map(name => `
+            <tr>
+                <td class="py-1">${name}</td>
+                <td class="py-1"><code class="small">${s3Base + name}</code></td>
+                <td class="py-1 text-end">
+                <button class="btn btn-sm btn-outline-secondary" data-copy="${s3Base + name}">Copy S3 URI</button>
+                </td>
+            </tr>`).join("");
+
+        return `
+        <div class="p-2">
+            <div class="fw-semibold mb-2">Files in <span class="text-nowrap"><code>${row.displayPrefix}</code></span></div>
+            <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>File</th><th>S3 URI</th><th class="text-end">Actions</th></tr></thead>
+                <tbody>${fileRows || `<tr><td colspan="3" class="text-muted">No files</td></tr>`}</tbody>
+            </table>
+            </div>
+        </div>`;
+    }
+
+    // Copy buttons (event delegation)
+    document.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-copy]");
+        if (!btn) return;
+        const text = btn.getAttribute("data-copy");
+        navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = "Copied!";
+            setTimeout(() => (btn.textContent = "Copy S3 URI"), 1200);
+        });
+    });
+
+    // jQuery ready: runs immediately if DOM already ready
+    $(function () {
+        const dt = $('#buildsTable').DataTable({
+            data: rows,
+            columns: [
+            { data: null, orderable: false, className: "dt-control", defaultContent: "" },
+            { data: "displayPrefix", render: d => `<span class="me-1">📁</span><code>${d}</code>` },
+            { data: "category" },
+            { data: "files_count", className: "text-end", render: d => d.toLocaleString() }
+            ],
+            order: [[1, "asc"]],
+            paging: true,
+            searching: true
+        });
+
+        $('#buildsTable tbody').on('click', 'td.dt-control', function () {
+            const tr  = $(this).closest('tr');
+            const row = dt.row(tr);
+            if (row.child.isShown()) { row.child.hide(); tr.removeClass('shown'); }
+            else { row.child(renderChild(row.data())).show(); tr.addClass('shown'); }
+        });
+    });
+
+</script>
 {% endblock %}

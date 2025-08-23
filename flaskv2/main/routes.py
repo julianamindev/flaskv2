@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
+import json
 import time
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, get_app_data, get_builds_for_app_stream, get_streams_for_app, list_pssc_tasks, plan_artifacts, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
 
 
 main = Blueprint('main', __name__)
@@ -317,4 +318,25 @@ def task_scheduler_list():
 @login_required
 def s3_builds():
     current_app.app_log.info("view_s3_builds")
-    return render_template("aws/s3_builds.html")
+
+    # test_keys = [
+    #     "migops/LARS/cloud.jar",
+    #     "migops/LARS/MT/AUG/Install-LMMIG.jar",
+    #     "migops/LARS/MT/AUG/Install-LMIEFIN.jar",
+    #     "migops/LARS/MT/AUG/Install-LMHCM.jar",
+    #     "migops/LARS/MT/AUG/LANDMARK.jar",
+    #     "migops/LARS/MT/AUG/grid-installer.jar",
+    #     "migops/LARS/MT/AUG/MIG_scripts.jar",
+    #     "migops/LARS/MT/AUG/mt_dependencies.txt",
+    #     "migops/LARS/FEATURE/feature1/feature1.txt",
+    #     "migops/LARS/FEATURE/feature1/feature2.txt",
+    #     "migops/LARS/HOTFIX/ccpa/build1.jar",
+    #     "migops/LARS/HOTFIX/ccpa/build2.jar",
+    #     "migops/LARS/HOTFIX/aultman/aultbuild.jar",
+    #     "migops/LARS/MT/SEP/relbuild.jar",
+    # ]
+    # prefix_map = build_prefix_index_from_keys(test_keys)
+    prefix_map = s3_build_prefix_index(bucket="migops", root="LARS/")
+
+
+    return render_template("aws/s3_builds.html", prefix_map=prefix_map)

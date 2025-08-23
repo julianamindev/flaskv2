@@ -1,5 +1,6 @@
 import json
 import subprocess
+from typing import Dict, List
 import boto3
 import csv, io, requests, os, re
 
@@ -9,6 +10,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta  # pip install python-dateutil
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from collections import defaultdict
 
 MATURITY = {
     "R":  "Released",
@@ -565,3 +567,115 @@ def _schtasks_csv():
 
     rows.sort(key=lambda x: x["name"].lower())
     return rows
+
+
+# ------- S3 builds page
+
+def s3_build_prefix_index(bucket: str = "migops", root: str = "LARS/") -> Dict[str, List[str]]:
+    """
+    Returns a map like:
+      {
+        "LARS/": ["cloud.jar"],
+        "MT/": ["foo.jar"],                       # files directly under a first-level prefix
+        "MT/AUG/": ["sample1.txt", "dir/x.jar"], # all files under a subprefix (recursive)
+        "FEATURE/feature1/": ["build1.jar", ...],
+        ...
+      }
+    Scans only within LARS/: root, first-level prefixes, and their subprefixes.
+    """
+    s3 = boto3.client("s3")
+    out: Dict[str, List[str]] = defaultdict(list)
+    paginator = s3.get_paginator("list_objects_v2")
+
+    # --- 1) Root (LARS/): gather files and collect first-level prefixes ---
+    first_level_prefixes = set()
+
+    for page in paginator.paginate(Bucket=bucket, Prefix=root, Delimiter="/"):
+        # Files directly under LARS/
+        for obj in page.get("Contents", []):
+            rel = obj["Key"][len(root):]  # e.g., "cloud.jar"
+            if rel and not rel.endswith("/"):
+                out["LARS/"].append(rel)
+
+        # First-level prefixes: e.g., "LARS/MT/", "LARS/FEATURE/", but not filtered
+        for cp in page.get("CommonPrefixes", []):
+            first_level_prefixes.add(cp["Prefix"])
+
+    # --- 2) For each first-level prefix: files directly under it, and subprefixes ---
+    for cat_prefix in sorted(first_level_prefixes):            # e.g., "LARS/MT/"
+        cat_name = cat_prefix[len(root):].strip("/")           # -> "MT"
+        sub_prefixes = set()
+
+        # Files directly under category (-> "MT/")
+        for page in paginator.paginate(Bucket=bucket, Prefix=cat_prefix, Delimiter="/"):
+            for obj in page.get("Contents", []):
+                rel = obj["Key"][len(cat_prefix):]             # e.g., "foo.jar"
+                if rel and not rel.endswith("/"):
+                    out[f"{cat_name}/"].append(rel)
+
+            # Collect subprefixes (-> "LARS/MT/AUG/", ...)
+            for cp in page.get("CommonPrefixes", []):
+                sub_prefixes.add(cp["Prefix"])
+
+        # --- 3) For each subprefix: gather ALL files under it (recursive) ---
+        for sub_prefix in sorted(sub_prefixes):                # e.g., "LARS/MT/AUG/"
+            sub_name = sub_prefix[len(cat_prefix):].strip("/") # -> "AUG"
+            for page in paginator.paginate(Bucket=bucket, Prefix=sub_prefix):
+                for obj in page.get("Contents", []):
+                    rel = obj["Key"][len(sub_prefix):]         # path under the subprefix
+                    if rel and not rel.endswith("/"):
+                        out[f"{cat_name}/{sub_name}/"].append(rel)
+
+    # Stable ordering for nicer UI
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def build_prefix_index_from_keys(keys: list[str]) -> dict[str, list[str]]:
+    """
+    Keys like:
+      migops/LARS/MT/AUG/sample1.txt
+      migops/LARS/FEATURE/feature1/feature2.txt
+      migops/LARS/toproot.jar
+      migops/LARS/MAINLINE/trunk/builds/build-1.jar
+    Returns:
+      {
+        "LARS/": ["toproot.jar"],
+        "MT/AUG/": ["sample1.txt", ...],
+        "FEATURE/feature1/": ["feature2.txt", ...],
+        "MAINLINE/trunk/": ["builds/build-1.jar"],
+        ...
+      }
+    """
+    base = "migops/LARS/"
+    out: dict[str, list[str]] = defaultdict(list)
+
+    for k in keys:
+        if not k.startswith(base):
+            continue
+
+        raw_suffix = k[len(base):]              # keep raw to detect folder markers
+        if not raw_suffix or raw_suffix.endswith("/"):
+            # skip folder marker objects like ".../"
+            continue
+
+        suffix = raw_suffix.strip("/")
+        parts = suffix.split("/")
+
+        if len(parts) == 1:
+            # file directly under LARS/
+            out["LARS/"].append(parts[0])
+            continue
+
+        category = parts[0]
+
+        if len(parts) == 2:
+            # file directly under a category folder (e.g., MT/foo.jar)
+            out[f"{category}/"].append(parts[1])
+            continue
+
+        # files under category/sub/... -> group by first two segments
+        sub = parts[1]
+        filename = "/".join(parts[2:])
+        out[f"{category}/{sub}/"].append(filename)
+
+    return dict(out)
