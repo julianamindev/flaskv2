@@ -310,3 +310,11 @@ def task_scheduler_list():
     current_app.app_log.info("view_task_scheduler_jobs")
     jobs = list_pssc_tasks()
     return render_template("bastion/task_scheduler_jobs.html", jobs=jobs)
+
+# ----------
+
+@main.route("/aws/s3_builds")
+@login_required
+def s3_builds():
+    current_app.app_log.info("view_s3_builds")
+    return render_template("aws/s3_builds.html")

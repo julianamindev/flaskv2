@@ -10,6 +10,10 @@ side_nav_items = {
                     "text": "LARS-to-AWS",
                     "route": "main.lars2aws",
                 },
+                {
+                    "text": "S3 Builds",
+                    "route": "main.s3_builds",
+                },
             ]
         },
     },
