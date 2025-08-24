@@ -301,8 +301,20 @@
         { id: "i-9f8e7d6c", name: "LM-Dev-2",   env: "DEV",  region: "ap-southeast-1", uptime: "54m" }
     ];
 
-    // Bootstrap modal instance
-    const injectModal = () => new bootstrap.Modal(document.getElementById('injectModal'), { backdrop: 'static', keyboard: false });
+    // One shared modal instance (create once, reuse)
+    const injectModalEl = document.getElementById('injectModal');
+    const injectModal   = bootstrap.Modal.getOrCreateInstance(injectModalEl, {
+        backdrop: 'static',
+        keyboard: false
+    });
+
+    injectModalEl.addEventListener('hidden.bs.modal', () => {
+      // Reset to step 1 and clear any hints
+      goStep(1);
+      document.getElementById('inj-hint').textContent = "";
+      injectState.selectedFiles.clear();
+      injectState.selectedStack = null;
+    });  
 
     // Utilities
     function goStep(n) {
@@ -411,7 +423,7 @@
         goStep(1);
 
         // Show modal
-        injectModal().show();
+        injectModal.show();
     });
 
     // Stack filter
@@ -497,7 +509,7 @@
         });
         // Next step: POST /api/inject with this payload, then show progress
         // For now, just close:
-        injectModal().hide();
+        injectModal.hide();
     });
 </script>
 {% endblock %}
