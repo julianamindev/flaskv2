@@ -8,7 +8,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
 
 
 from botocore.exceptions import ClientError, WaiterError
@@ -308,71 +308,18 @@ def lars2aws_upload_item():
 @main.route("/aws/instances")
 @login_required
 def instances():
-    ec2 = boto3.client("ec2", region_name="us-east-1")
-    paginator = ec2.get_paginator("describe_instances")
-    pages = paginator.paginate()
+    stacks = get_stacks_summary(region="us-east-1")
 
-    stacks_states   = defaultdict(list)
-    stacks_clients  = {}
-    stacks_alwayson = {}
-
-    for page in pages:
-        for res in page.get("Reservations", []):
-            for inst in res.get("Instances", []):
-                tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
-                stack = tags.get("aws:cloudformation:stack-name")
-                if not stack:
-                    continue
-
-                state = (inst.get("State") or {}).get("Name", "")
-                stacks_states[stack].append(state)
-
-                client = tags.get("customerPrefix")
-                if client:
-                    stacks_clients[stack] = client
-
-                logical_id = tags.get("aws:cloudformation:logical-id", "")
-                if logical_id == "INFORBCLM01LInstance":
-                    itops_region = (tags.get("ITOPS_Region") or "").strip().upper()
-                    stacks_alwayson[stack] = "On" if itops_region == "ALWAYSON" else "Off"
-
-    def classify_stack(states):
-        if not states:
-            return "Unknown"
-        all_running = all(x == "running" for x in states)
-        all_stopped = all(x == "stopped" for x in states)
-        opening = any(x in ("pending", "starting") for x in states)
-        closing = any(x in ("stopping", "shutting-down") for x in states)
-        if all_running:
-            return "Running"
-        if all_stopped:
-            return "Off"
-        if opening and not closing:
-            return "Opening"
-        if closing and not opening:
-            return "Closing"
-        return "Degraded"
-
-    stacks = []
-    for stack, states in sorted(stacks_states.items()):
-        stacks.append({
-            "name": stack,
-            "client": stacks_clients.get(stack, "-"),
-            "state": classify_stack(states),
-            "alwayson": stacks_alwayson.get(stack, "Off"),
-        })
-
-    # counts for the summary header
     total_stacks = len(stacks)
     state_counts = Counter(s["state"] for s in stacks)
-
     states = ["Running", "Off", "Opening", "Closing", "Degraded", "Unknown"]
+
     return render_template(
         "aws/instances.html",
         stacks=stacks,
         states=states,
         total_stacks=total_stacks,
-        state_counts=state_counts
+        state_counts=state_counts,
     )
 
 @main.route("/aws/stack/<stack_name>/storage-db-live")

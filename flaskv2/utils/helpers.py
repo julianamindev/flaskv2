@@ -710,3 +710,138 @@ def get_object_version_meta(bucket: str, root: str, rel_key: str) -> Optional[Di
     meta = resp.get("Metadata") or {}
     ver = meta.get("version")
     return {"version": ver} if ver else None
+
+# -------- AWS INSTANCES
+
+# Single place to classify a stack given its instance states
+def classify_stack(states: List[str]) -> str:
+    if not states:
+        return "Unknown"
+    all_running = all(s == "running" for s in states)
+    all_stopped = all(s == "stopped" for s in states)
+    opening = any(s in ("pending", "starting") for s in states)
+    closing = any(s in ("stopping", "shutting-down") for s in states)
+    if all_running:
+        return "Running"
+    if all_stopped:
+        return "Off"
+    if opening and not closing:
+        return "Opening"
+    if closing and not opening:
+        return "Closing"
+    return "Degraded"
+
+
+REQUIRED_ROLES = {
+    "INFORBCLM01LInstance",
+    "INFORBCVP01Instance",
+    "INFORBCDB01Instance",
+    "INFORBCAD01Instance",
+}
+
+def _collect_stack_info(*, region: str = "us-east-1") -> Dict[str, Dict[str, Any]]:
+    ec2 = boto3.client("ec2", region_name=region)
+    paginator = ec2.get_paginator("describe_instances")
+
+    stacks: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "states": [],
+            "client": None,
+            "alwayson": "Off",
+            "instance_ids": [],
+            "running_ids": [],
+            "lm_candidate_id": None,
+            "env": None,
+            "region": region,
+            # NEW: per-logical-id instance id and state
+            "roles": {},             # {"INFORBCLM01LInstance": {"id": "...", "state": "running"}}
+        }
+    )
+
+    for page in paginator.paginate():
+        for res in page.get("Reservations", []):
+            for inst in res.get("Instances", []):
+                tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+                stack = tags.get("aws:cloudformation:stack-name")
+                if not stack:
+                    continue
+
+                state = (inst.get("State") or {}).get("Name", "")
+                iid = inst.get("InstanceId")
+                logical_id = tags.get("aws:cloudformation:logical-id", "")
+
+                info = stacks[stack]
+                info["states"].append(state)
+                if iid:
+                    info["instance_ids"].append(iid)
+                    if state == "running":
+                        info["running_ids"].append(iid)
+
+                if logical_id:
+                    info["roles"][logical_id] = {"id": iid, "state": state}
+
+                client = tags.get("customerPrefix")
+                if client:
+                    info["client"] = client
+
+                env = tags.get("Environment") or tags.get("ENV") or tags.get("Env")
+                if env:
+                    info["env"] = env
+
+                if logical_id == "INFORBCLM01LInstance":
+                    info["lm_candidate_id"] = iid
+                    itops_region = (tags.get("ITOPS_Region") or "").strip().upper()
+                    info["alwayson"] = "On" if itops_region == "ALWAYSON" else "Off"
+
+    return stacks
+
+def is_stack_fully_running(info: Dict[str, Any]) -> bool:
+    roles = info.get("roles", {})
+    for rid in REQUIRED_ROLES:
+        r = roles.get(rid)
+        if not r or r.get("state") != "running":
+            return False
+    return True
+
+def get_running_landmark_targets(*, region: str = "us-east-1") -> List[Dict[str, Any]]:
+    stacks = _collect_stack_info(region=region)
+    targets: List[Dict[str, Any]] = []
+    for name, info in stacks.items():
+        if not is_stack_fully_running(info):
+            continue
+        # Use the Landmark app instance as the target
+        lm = info["roles"].get("INFORBCLM01LInstance")
+        if not lm or not lm.get("id"):
+            continue
+        targets.append({
+            "id": lm["id"],
+            "name": name,
+            "env": info.get("env") or "",
+            "region": info.get("region"),
+        })
+    targets.sort(key=lambda x: x["name"])
+    return targets
+
+
+def get_stacks_summary(*, region: str = "us-east-1") -> List[Dict[str, Any]]:
+    """
+    Return a list of stacks for the Instances page, with computed state.
+    Shape matches what your template already expects.
+    """
+    stacks = _collect_stack_info(region=region)
+    out: List[Dict[str, Any]] = []
+    for name, info in sorted(stacks.items()):
+        out.append(
+            {
+                "name": name,
+                "client": info.get("client") or "-",
+                "state": classify_stack(info.get("states", [])),
+                "alwayson": info.get("alwayson", "Off"),
+                # Optional extras you might want in templates later:
+                # "region": info["region"],
+                # "env": info.get("env"),
+                # "instances": info.get("instance_ids", []),
+            }
+        )
+    return out
+
