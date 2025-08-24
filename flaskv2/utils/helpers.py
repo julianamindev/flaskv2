@@ -630,6 +630,7 @@ def s3_build_prefix_index(bucket: str = "migops", root: str = "LARS/") -> Dict[s
     return {k: sorted(v) for k, v in out.items()}
 
 
+# test
 def build_prefix_index_from_keys(keys: list[str]) -> dict[str, list[str]]:
     """
     Keys like:

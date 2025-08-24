@@ -254,7 +254,7 @@
                 render: (_data, _type, row) => {
                     const disabled = row.files_count === 0 ? "disabled" : "";
                     // Carry context in data-* attributes; we’ll use these for the modal next
-                    return `<button type="button" btn btn-sm btn-outline-primary btn-inject"
+                    return `<button type="button" class="btn btn-sm btn-outline-primary btn-inject"
                             data-prefix="${row.displayPrefix}"
                             data-keyprefix="${row.keyPrefix}"
                             ${disabled}
