@@ -116,6 +116,15 @@
             Pre-clear will remove if present: <code>Install-LMMIG.jar</code>, <code>Install-LMHCM.jar</code>, <code>Install-LMIEFIN.jar</code>, <code>LANDMARK.jar</code>, <code>grid-installer.jar</code>, <code>mt-dependencies.txt</code>, <code>mt_dependencies.txt</code>.
           </div>
         </div>
+
+        <!-- Progress pane (shown after submit) -->
+        <div id="inj-progress" class="d-none">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="fw-semibold">Injection Progress</span>
+            <span id="inj-status-badge" class="badge bg-secondary">Pending</span>
+          </div>
+          <pre id="inj-log" class="bg-dark text-light p-2 rounded" style="max-height:260px; overflow:auto; white-space:pre-wrap;"></pre>
+        </div>
       </div>
 
       <div class="modal-footer">

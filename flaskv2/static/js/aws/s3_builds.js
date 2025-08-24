@@ -50,7 +50,46 @@
       sum.textContent = '0 stacks';
       console.error('loadRunningStacks error:', err);
     }
-  }  
+  }
+
+  function showProgressUI() {
+    // hide steps, show progress panel
+    document.getElementById('inj-step-1').classList.add('d-none');
+    document.getElementById('inj-step-2').classList.add('d-none');
+    document.getElementById('inj-step-3').classList.add('d-none');
+    document.getElementById('inj-progress').classList.remove('d-none');
+    // footer: show only Close (we’ll repurpose submit button label)
+    document.getElementById('inj-back').disabled = true;
+    document.getElementById('inj-next').classList.add('d-none');
+    const submitBtn = document.getElementById('inj-submit');
+    submitBtn.classList.remove('d-none');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Injecting…';
+    document.getElementById('inj-hint').textContent = 'Running SSM command on the selected stack…';
+    // clear log/status
+    document.getElementById('inj-log').textContent = '';
+    const badge = document.getElementById('inj-status-badge');
+    badge.className = 'badge bg-secondary';
+    badge.textContent = 'Pending';
+  }
+
+  function setProgressStatus(status, details, outText) {
+    const badge = document.getElementById('inj-status-badge');
+    const logEl = document.getElementById('inj-log');
+    const cls = {
+      Pending: 'bg-secondary',
+      InProgress: 'bg-info',
+      Delayed: 'bg-warning',
+      Success: 'bg-success',
+      Failed: 'bg-danger',
+      TimedOut: 'bg-danger',
+      Cancelled: 'bg-secondary',
+      Cancelling: 'bg-warning'
+    }[status] || 'bg-secondary';
+    badge.className = `badge ${cls}`;
+    badge.textContent = details || status;
+    if (outText) logEl.textContent = outText;
+  }
 
   // ----- Build DataTable rows from PREFIX_MAP -----
   function buildRows() {
@@ -412,16 +451,81 @@
       renderFiles();
     });
 
-    // Submit (no backend yet)
-    document.getElementById('inj-submit').addEventListener('click', () => {
-      console.log('Would inject:', {
-        stack: injectState.selectedStack,
-        prefix: injectState.displayPrefix,
-        keyPrefix: injectState.keyPrefix,
-        files: [...injectState.selectedFiles]
-      });
-      injectModal.hide();
+    // Submit
+    document.getElementById('inj-submit').addEventListener('click', async () => {
+      // Build payload
+      const instanceId = injectState.selectedStack?.id;
+      const filesArr   = [...injectState.selectedFiles];
+      const keyPrefix  = injectState.keyPrefix; // "" or "MT/AUG/"
+
+      // Safety
+      if (!instanceId || filesArr.length === 0) return;
+
+      showProgressUI();
+
+      try {
+        const resp = await fetch('/api/inject', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            instance_id: instanceId,
+            key_prefix: keyPrefix,
+            files: filesArr
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+
+        // Poll
+        await pollInjectStatus(data.job_id, data.instance_id);
+      } catch (err) {
+        setProgressStatus('Failed', 'Failed to start', String(err));
+        // enable Close
+        const submitBtn = document.getElementById('inj-submit');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Close';
+        submitBtn.onclick = () => {
+          const injectModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('injectModal'));
+          injectModal.hide();
+        };
+      }
     });
+
+    async function pollInjectStatus(jobId, instanceId) {
+      const submitBtn = document.getElementById('inj-submit');
+      let done = false;
+
+      while (!done) {
+        const r = await fetch(`/api/inject/${encodeURIComponent(jobId)}/status?instance_id=${encodeURIComponent(instanceId)}`, {
+          credentials: 'same-origin'
+        });
+        const j = await r.json();
+
+        if (!j.ok) {
+          setProgressStatus('Failed', 'Status error', j.error || '');
+          break;
+        }
+
+        // Combine stdout/stderr for display
+        const out = [j.stdout || '', j.stderr || ''].filter(Boolean).join('\n');
+        setProgressStatus(j.status, j.status_details, out);
+
+        if (['Success','Failed','Cancelled','TimedOut'].includes(j.status)) {
+          done = true;
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Close';
+          submitBtn.onclick = () => {
+            const injectModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('injectModal'));
+            injectModal.hide();
+          };
+          break;
+        }
+
+        await new Promise(res => setTimeout(res, 2000));
+      }
+    }
+
 
     // Optional: reset wizard on close
     injectModalEl.addEventListener('hidden.bs.modal', () => {

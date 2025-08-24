@@ -8,7 +8,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_inject_status, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, send_inject_command, stream_exists_live, upload_item, upload_plan
 
 
 from botocore.exceptions import ClientError, WaiterError
@@ -473,3 +473,52 @@ def api_stacks():
     # Optional fallback: full summary (if you ever need it)
     data = get_stacks_summary(region="us-east-1")
     return jsonify(data)
+
+
+
+#### INJECT ROUTES
+
+@main.route("/api/inject", methods=["POST"])
+@login_required
+def api_inject():
+    """
+    Body JSON:
+      {
+        "instance_id": "i-...",
+        "key_prefix": "MT/AUG/",  // "" for root (LARS/)
+        "files": ["Install-LMMIG.jar", "LANDMARK.jar"]
+      }
+    """
+    data = request.get_json(silent=True) or {}
+    instance_id = (data.get("instance_id") or "").strip()
+    key_prefix  = data.get("key_prefix") or ""
+    files       = data.get("files") or []
+
+    if not instance_id or not isinstance(files, list) or not all(isinstance(x, str) for x in files):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+
+    try:
+        cmd_id = send_inject_command(
+            instance_id=instance_id,
+            bucket="migops",
+            root="LARS/",
+            key_prefix=key_prefix,
+            files=files,
+            region="us-east-1",
+        )
+        return jsonify({"ok": True, "job_id": cmd_id, "instance_id": instance_id})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@main.route("/api/inject/<job_id>/status")
+@login_required
+def api_inject_status(job_id: str):
+    instance_id = (request.args.get("instance_id") or "").strip()
+    if not instance_id:
+        return jsonify({"ok": False, "error": "missing instance_id"}), 400
+    try:
+        stat = get_inject_status(command_id=job_id, instance_id=instance_id, region="us-east-1")
+        stat["ok"] = True
+        return jsonify(stat)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500

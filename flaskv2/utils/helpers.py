@@ -845,3 +845,100 @@ def get_stacks_summary(*, region: str = "us-east-1") -> List[Dict[str, Any]]:
         )
     return out
 
+
+### SSM HELPERS
+
+CLEAR_LIST = [
+    "Install-LMMIG.jar",
+    "Install-LMHCM.jar",
+    "Install-LMIEFIN.jar",
+    "LANDMARK.jar",
+    "grid-installer.jar",
+    "mt-dependencies.txt",
+    "mt_dependencies.txt",
+]
+
+def _build_inject_script(bucket: str, root: str, key_prefix: str, files: List[str]) -> List[str]:
+    """
+    Returns a list of shell commands to be executed by SSM AWS-RunShellScript.
+    key_prefix: "" or "MT/AUG/" etc (relative to root). root like "LARS/"
+    """
+    s3_base = f"s3://{bucket}/{root}{key_prefix}"
+    dest = "/opt/infor/landmark/tmp"
+
+    cmds = [
+        "set -euo pipefail",
+        f'DEST="{dest}"',
+        'echo "[info] creating destination ${DEST}"',
+        "mkdir -p \"$DEST\"",
+        'echo "[info] pre-clearing known files"',
+    ]
+    # preclear
+    for f in CLEAR_LIST:
+        cmds.append(f'echo " - rm -f ${DEST}/{f}"')
+        cmds.append(f'rm -f "$DEST/{f}" || true')
+
+    # copy loop
+    cmds.append('echo "[info] copying selected files"')
+    for name in files:
+        s3_src = f"{s3_base}{name}"
+        cmds.append(f'echo " - aws s3 cp {s3_src} $DEST/"')
+        cmds.append(f'aws s3 cp "{s3_src}" "$DEST/" --only-show-errors')
+
+    # final listing
+    cmds += [
+        'echo "[info] final destination listing:"',
+        'ls -lah "$DEST" || true'
+    ]
+    return cmds
+
+def send_inject_command(
+    *, instance_id: str, bucket: str, root: str, key_prefix: str, files: List[str], region: str = "us-east-1"
+) -> str:
+    """
+    Launch SSM AWS-RunShellScript to preclear and copy files. Returns CommandId.
+    """
+    ssm = boto3.client("ssm", region_name=region)
+    commands = _build_inject_script(bucket, root, key_prefix, files)
+    resp = ssm.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        Parameters={"commands": commands},
+        CloudWatchOutputConfig={"CloudWatchOutputEnabled": False},
+    )
+    return resp["Command"]["CommandId"]
+
+def get_inject_status(
+    *, command_id: str, instance_id: str, region: str = "us-east-1"
+) -> Dict[str, Any]:
+    """
+    Returns {ok, status, stdout, stderr, status_details}
+    status in: Pending | InProgress | Delayed | Success | Cancelled | Failed | TimedOut | Cancelling
+    """
+    ssm = boto3.client("ssm", region_name=region)
+    invs = ssm.list_command_invocations(
+        CommandId=command_id, InstanceId=instance_id, Details=True
+    )
+    if not invs.get("CommandInvocations"):
+        return {"ok": True, "status": "Pending", "stdout": "", "stderr": "", "status_details": ""}
+
+    inv = invs["CommandInvocations"][0]
+    status = inv.get("Status") or "Pending"
+    plug = inv.get("CommandPlugins") or []
+    stdout = ""
+    stderr = ""
+    if plug:
+        # Concatenate outputs from plugins (usually just one for RunShellScript)
+        for p in plug:
+            stdout += (p.get("Output", "") or "")
+            if p.get("Status") in ("Failed", "TimedOut"):
+                stderr += (p.get("Output", "") or "")
+    return {
+        "ok": True,
+        "status": status,
+        "stdout": stdout,
+        "stderr": stderr,
+        "status_details": inv.get("StatusDetails") or status,
+    }
+
+
