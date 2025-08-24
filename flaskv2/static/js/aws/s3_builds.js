@@ -227,20 +227,32 @@
   function renderFiles() {
     const tbody = document.querySelector('#filesTable tbody');
     const s3Base = `s3://${BUCKET}/${ROOT}/${injectState.keyPrefix}`;
-    const rowsHtml = injectState.files.map(name => `
-      <tr>
-        <td><input type="checkbox" class="filePick" value="${name}" ${injectState.selectedFiles.has(name) ? 'checked' : ''}></td>
-        <td>${name}</td>
-        <td><code class="small">${s3Base + name}</code></td>
-        <td>
-          ${NEEDS_META_SET.has(name) ? `<span class="badge bg-light text-dark">version pending…</span>` : '—'}
-        </td>
-      </tr>
-    `).join('');
+
+    const rowsHtml = injectState.files.map(name => {
+      const relKey = `${injectState.keyPrefix}${name}`;     // relative to LARS/
+      const need   = NEEDS_META_SET.has(name);
+
+      // If cached, show immediately; else show an ellipsis and hydrate later
+      const cached = META_CACHE.get(relKey);
+      const metaCell = need
+        ? `<td class="meta-cell" data-key="${relKey}">${cached !== undefined ? cached : '…'}</td>`
+        : `<td>—</td>`;
+
+      return `
+        <tr>
+          <td><input type="checkbox" class="filePick" value="${name}" ${injectState.selectedFiles.has(name) ? 'checked' : ''}></td>
+          <td>${name}</td>
+          <td><code class="small">${s3Base + name}</code></td>
+          ${metaCell}
+        </tr>
+      `;
+    }).join('');
+
     tbody.innerHTML = rowsHtml;
     updateFilesSummary();
-    hydrateModalMeta();
+    hydrateModalMeta();    // <-- fetch versions for “…” cells
   }
+
 
   function updateFilesSummary() {
     document.getElementById('filesSummary').textContent = `${injectState.selectedFiles.size} selected`;
