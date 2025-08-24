@@ -250,6 +250,7 @@
             {
                 data: null,
                 orderable: false,
+                className: "text-end",
                 render: (_data, _type, row) => {
                     const disabled = row.files_count === 0 ? "disabled" : "";
                     // Carry context in data-* attributes; we’ll use these for the modal next
@@ -280,17 +281,6 @@
                 hydrateMetaCellsFor(tr[0]); // fetch versions for this child panel
             }
         });
-    });
-
-    $('#buildsTable tbody').on('click', '.btn-inject', function () {
-        const dtApi = $('#buildsTable').DataTable();
-        
-        const tr   = $(this).closest('tr');
-        const row  = dtApi.row(tr).data();
-        const pref = this.getAttribute('data-prefix');  // e.g., "LARS/" or "MT/AUG/"
-        const kpre = this.getAttribute('data-keyprefix'); // e.g., "" or "MT/AUG/"
-        console.log('Inject clicked:', { pref, kpre, row });
-        // Next step: open the single-modal wizard seeded with {pref, kpre, row.files}
     });
 
     // INJECT BUILDS SECTION
