@@ -8,25 +8,122 @@
 
 {% block main %}
 <div class="container-fluid py-3">
-  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-    <h4 class="mb-0">S3 Builds (Test Data)</h4>
-    <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Refresh</button>
-  </div>
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <h4 class="mb-0">S3 Builds (Test Data)</h4>
+        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Refresh</button>
+    </div>
 
-  <div class="card shadow-sm">
-    <div class="card-body">
-      <table id="buildsTable" class="table table-striped table-hover w-100 align-middle">
-        <thead>
-        <tr>
-          <th style="width:2rem;"></th>
-          <th>Prefix</th>
-          <th>Category</th>
-          <th class="text-end">Files</th>
-          <th class="text-end">Inject</th>
-        </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <table id="buildsTable" class="table table-striped table-hover w-100 align-middle">
+            <thead>
+            <tr>
+                <th style="width:2rem;"></th>
+                <th>Prefix</th>
+                <th>Category</th>
+                <th class="text-end">Files</th>
+                <th class="text-end">Inject</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Inject Builds Modal -->
+<div class="modal fade" id="injectModal" tabindex="-1" aria-labelledby="injectModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="injectModalLabel">
+          Inject builds from <code id="inj-prefix">—</code>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Step indicator -->
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div class="small text-muted" id="inj-step-indicator">Step 1 of 3 — Select target stack</div>
+          <div class="badge bg-light text-dark fw-normal" id="inj-context">
+            <span class="me-2">Destination:</span><code>/opt/infor/landmark/tmp</code>
+          </div>
+        </div>
+
+        <!-- Step 1: pick a stack -->
+        <div id="inj-step-1">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <input id="stackFilter" type="search" class="form-control form-control-sm" placeholder="Filter stacks… (name, id, env)">
+            <span class="text-muted small">Running Landmark stacks</span>
+          </div>
+          <div class="table-responsive border rounded">
+            <table class="table table-sm align-middle mb-0" id="stacksTable">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:2.2rem;"></th>
+                  <th>Name</th>
+                  <th>Instance ID</th>
+                  <th>Env</th>
+                  <th>Region</th>
+                  <th>Uptime</th>
+                </tr>
+              </thead>
+              <tbody><!-- filled by JS --></tbody>
+            </table>
+          </div>
+          <div class="small text-muted mt-2" id="stacksSummary">0 stacks</div>
+        </div>
+
+        <!-- Step 2: choose files -->
+        <div id="inj-step-2" class="d-none">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Select files to inject</div>
+            <div class="d-flex align-items-center gap-2">
+              <button class="btn btn-sm btn-outline-secondary" id="selectAllFiles">Select all</button>
+              <button class="btn btn-sm btn-outline-secondary" id="clearAllFiles">Clear all</button>
+            </div>
+          </div>
+          <div class="table-responsive border rounded">
+            <table class="table table-sm align-middle mb-0" id="filesTable">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:2rem;"></th>
+                  <th>File</th>
+                  <th>S3 URI</th>
+                  <th>Metadata</th>
+                </tr>
+              </thead>
+              <tbody><!-- filled by JS --></tbody>
+            </table>
+          </div>
+          <div class="small text-muted mt-2" id="filesSummary">0 selected</div>
+        </div>
+
+        <!-- Step 3: confirm -->
+        <div id="inj-step-3" class="d-none">
+          <div class="mb-3">
+            <div class="fw-semibold mb-1">Summary</div>
+            <ul class="mb-0">
+              <li>Stack: <code id="sum-stack">—</code></li>
+              <li>Prefix: <code id="sum-prefix">—</code></li>
+              <li>Destination: <code>/opt/infor/landmark/tmp</code></li>
+              <li>Files (<span id="sum-count">0</span>):</li>
+            </ul>
+            <div class="border rounded p-2 mt-2" style="max-height: 180px; overflow:auto" id="sum-files"><!-- filled by JS --></div>
+          </div>
+          <div class="alert alert-warning mb-0">
+            Pre-clear will remove if present: <code>Install-LMMIG.jar</code>, <code>Install-LMHCM.jar</code>, <code>Install-LMIEFIN.jar</code>, <code>LANDMARK.jar</code>, <code>grid-installer.jar</code>, <code>mt-dependencies.txt</code>, <code>mt_dependencies.txt</code>.
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <div class="text-muted small me-auto" id="inj-hint"></div>
+        <button type="button" class="btn btn-outline-secondary" id="inj-back" disabled>Back</button>
+        <button type="button" class="btn btn-primary" id="inj-next">Next</button>
+        <button type="button" class="btn btn-success d-none" id="inj-submit">Inject Builds</button>
+      </div>
     </div>
   </div>
 </div>
@@ -156,7 +253,7 @@
                 render: (_data, _type, row) => {
                     const disabled = row.files_count === 0 ? "disabled" : "";
                     // Carry context in data-* attributes; we’ll use these for the modal next
-                    return `<button type="button" class="btn btn-sm btn-primary btn-inject"
+                    return `<button type="button" btn btn-sm btn-outline-primary btn-inject"
                             data-prefix="${row.displayPrefix}"
                             data-keyprefix="${row.keyPrefix}"
                             ${disabled}
@@ -194,6 +291,223 @@
         const kpre = this.getAttribute('data-keyprefix'); // e.g., "" or "MT/AUG/"
         console.log('Inject clicked:', { pref, kpre, row });
         // Next step: open the single-modal wizard seeded with {pref, kpre, row.files}
-    });    
+    });
+
+    // INJECT BUILDS SECTION
+
+    // --- Modal state ---
+    const injectState = {
+        displayPrefix: "",   // e.g., "LARS/" or "MT/AUG/"
+        keyPrefix: "",       // e.g., "" or "MT/AUG/"
+        files: [],           // files available under keyPrefix
+        selectedStack: null, // {id, name, env, region, uptime}
+        selectedFiles: new Set()
+    };
+
+    // Seeded stacks (replace with API later)
+    const STACKS_SEEDED = [
+        { id: "i-0a1b2c3d", name: "LM-Prod-1",  env: "PROD", region: "ap-southeast-1", uptime: "3d 4h" },
+        { id: "i-123abc45", name: "LM-Stg-1",   env: "STG",  region: "ap-southeast-1", uptime: "8h 12m" },
+        { id: "i-9f8e7d6c", name: "LM-Dev-2",   env: "DEV",  region: "ap-southeast-1", uptime: "54m" }
+    ];
+
+    // Bootstrap modal instance
+    const injectModal = () => new bootstrap.Modal(document.getElementById('injectModal'), { backdrop: 'static', keyboard: false });
+
+    // Utilities
+    function goStep(n) {
+        // show/hide steps
+        document.getElementById('inj-step-1').classList.toggle('d-none', n !== 1);
+        document.getElementById('inj-step-2').classList.toggle('d-none', n !== 2);
+        document.getElementById('inj-step-3').classList.toggle('d-none', n !== 3);
+
+        // footer buttons
+        document.getElementById('inj-back').disabled = (n === 1);
+        document.getElementById('inj-next').classList.toggle('d-none', n === 3);
+        document.getElementById('inj-submit').classList.toggle('d-none', n !== 3);
+
+        // step label
+        const stepLbl = document.getElementById('inj-step-indicator');
+        if (n === 1) stepLbl.textContent = "Step 1 of 3 — Select target stack";
+        if (n === 2) stepLbl.textContent = "Step 2 of 3 — Select files to inject";
+        if (n === 3) stepLbl.textContent = "Step 3 of 3 — Confirm & inject";
+
+        // contextual hint
+        const hint = document.getElementById('inj-hint');
+        if (n === 1) hint.textContent = "Pick the Landmark stack that will receive the files.";
+        if (n === 2) hint.textContent = "Choose which files to copy into /opt/infor/landmark/tmp.";
+        if (n === 3) hint.textContent = "Review and confirm. We’ll pre-clear conflicting files before copying.";
+    }
+
+    function renderStacks(list) {
+        const tbody = document.querySelector('#stacksTable tbody');
+        const rowsHtml = list.map(s => `
+        <tr>
+            <td><input type="radio" name="stackPick" value="${s.id}" aria-label="Select ${s.name}"></td>
+            <td>${s.name}</td>
+            <td><code>${s.id}</code></td>
+            <td>${s.env || ""}</td>
+            <td>${s.region || ""}</td>
+            <td>${s.uptime || ""}</td>
+        </tr>
+        `).join("");
+        tbody.innerHTML = rowsHtml;
+        document.getElementById('stacksSummary').textContent = `${list.length} stacks`;
+    }
+
+    function filterStacks(term) {
+        term = term.trim().toLowerCase();
+        const rows = document.querySelectorAll('#stacksTable tbody tr');
+        let shown = 0;
+        rows.forEach(tr => {
+        const txt = tr.textContent.toLowerCase();
+        const keep = !term || txt.includes(term);
+        tr.classList.toggle('d-none', !keep);
+        if (keep) shown++;
+        });
+        document.getElementById('stacksSummary').textContent = `${shown} stacks`;
+    }
+
+    function renderFiles() {
+        const tbody = document.querySelector('#filesTable tbody');
+        const s3Base = `s3://${BUCKET}/${ROOT}/${injectState.keyPrefix}`; // ROOT, BUCKET come from your page earlier
+        const rowsHtml = injectState.files.map(name => `
+        <tr>
+            <td><input type="checkbox" class="filePick" value="${name}" ${injectState.selectedFiles.has(name) ? "checked" : ""}></td>
+            <td>${name}</td>
+            <td><code class="small">${s3Base + name}</code></td>
+            <td>
+            ${NEEDS_META_SET.has(name) ? `<span class="badge bg-light text-dark">version pending…</span>` : "—"}
+            </td>
+        </tr>
+        `).join("");
+        tbody.innerHTML = rowsHtml;
+        updateFilesSummary();
+    }
+
+    function updateFilesSummary() {
+        document.getElementById('filesSummary').textContent = `${injectState.selectedFiles.size} selected`;
+    }
+
+    function renderSummary() {
+        document.getElementById('sum-stack').textContent  = `${injectState.selectedStack?.name || "—"} (${injectState.selectedStack?.id || ""})`;
+        document.getElementById('sum-prefix').textContent = injectState.displayPrefix || "—";
+        document.getElementById('sum-count').textContent  = injectState.selectedFiles.size.toString();
+        document.getElementById('sum-files').innerHTML    = [...injectState.selectedFiles].map(f => `<code class="d-inline-block me-2 mb-1">${f}</code>`).join("");
+    }
+
+    // Open modal from Inject button
+    $('#buildsTable tbody').on('click', '.btn-inject', function () {
+        const dtApi = $('#buildsTable').DataTable();
+        const tr    = $(this).closest('tr');
+        const row   = dtApi.row(tr).data();
+
+        // Seed state
+        injectState.displayPrefix = this.dataset.prefix || row.displayPrefix;
+        injectState.keyPrefix     = this.dataset.keyprefix || row.keyPrefix;
+        injectState.files         = (row.files || []).slice();   // shallow copy
+        injectState.selectedFiles = new Set();                   // reset
+        injectState.selectedStack = null;
+
+        // Header
+        document.getElementById('inj-prefix').textContent = injectState.displayPrefix;
+
+        // Step 1: stacks
+        renderStacks(STACKS_SEEDED);   // later: swap to fetch('/api/stacks?...')
+        document.getElementById('stackFilter').value = "";
+        filterStacks("");
+
+        // Start at step 1
+        goStep(1);
+
+        // Show modal
+        injectModal().show();
+    });
+
+    // Stack filter
+    document.getElementById('stackFilter').addEventListener('input', (e) => {
+        filterStacks(e.target.value);
+    });
+
+    // Pick a stack (radio)
+    document.querySelector('#stacksTable tbody').addEventListener('change', (e) => {
+        if (e.target && e.target.name === 'stackPick') {
+        const id = e.target.value;
+        const tr = e.target.closest('tr');
+        injectState.selectedStack = {
+            id,
+            name:  tr.children[1].textContent,
+            env:   tr.children[3].textContent,
+            region:tr.children[4].textContent,
+            uptime:tr.children[5].textContent
+        };
+        }
+    });
+
+    // Next / Back / Submit
+    document.getElementById('inj-next').addEventListener('click', () => {
+        const is1 = !document.getElementById('inj-step-1').classList.contains('d-none');
+        const is2 = !document.getElementById('inj-step-2').classList.contains('d-none');
+
+        if (is1) {
+        if (!injectState.selectedStack) {
+            // visual nudge
+            document.getElementById('inj-hint').textContent = "Please select a stack to continue.";
+            return;
+        }
+        // Prepare files table
+        renderFiles();
+        goStep(2);
+        return;
+        }
+
+        if (is2) {
+        if (injectState.selectedFiles.size === 0) {
+            document.getElementById('inj-hint').textContent = "Please select at least one file.";
+            return;
+        }
+        renderSummary();
+        goStep(3);
+        return;
+        }
+    });
+
+    document.getElementById('inj-back').addEventListener('click', () => {
+        const is3 = !document.getElementById('inj-step-3').classList.contains('d-none');
+        if (is3) { goStep(2); return; }
+        const is2 = !document.getElementById('inj-step-2').classList.contains('d-none');
+        if (is2) { goStep(1); return; }
+    });
+
+    // File selection handlers
+    document.getElementById('filesTable').addEventListener('change', (e) => {
+        if (e.target && e.target.classList.contains('filePick')) {
+        const name = e.target.value;
+        if (e.target.checked) injectState.selectedFiles.add(name);
+        else injectState.selectedFiles.delete(name);
+        updateFilesSummary();
+        }
+    });
+    document.getElementById('selectAllFiles').addEventListener('click', () => {
+        injectState.selectedFiles = new Set(injectState.files);
+        renderFiles();
+    });
+    document.getElementById('clearAllFiles').addEventListener('click', () => {
+        injectState.selectedFiles.clear();
+        renderFiles();
+    });
+
+    // Submit (no backend yet)
+    document.getElementById('inj-submit').addEventListener('click', () => {
+        console.log("Would inject:", {
+        stack: injectState.selectedStack,
+        prefix: injectState.displayPrefix,
+        keyPrefix: injectState.keyPrefix,
+        files: [...injectState.selectedFiles]
+        });
+        // Next step: POST /api/inject with this payload, then show progress
+        // For now, just close:
+        injectModal().hide();
+    });
 </script>
 {% endblock %}
