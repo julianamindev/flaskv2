@@ -8,6 +8,9 @@
   const BUCKET = S3B.BUCKET || 'migops';
   const ROOT   = S3B.ROOT   || 'LARS';
 
+  // Cache S3 version metadata by relative key (e.g., "MT/AUG/LANDMARK.jar")
+  const META_CACHE = new Map();
+
   // ----- Files that should show version metadata (x-amz-meta-version) -----
   const NEEDS_META_SET = new Set([
     'Install-LMMIG.jar',
@@ -114,7 +117,32 @@
       fetch(`/api/s3/object_meta?key=${encodeURIComponent(key)}`)
         .then(r => r.json())
         .then(({ ok, metadata }) => {
-          td.textContent = (ok && metadata && metadata.version) ? metadata.version : '—';
+          const val = (ok && metadata && metadata.version) ? metadata.version : '—';
+          META_CACHE.set(key, val);
+          td.textContent = val;
+        })
+    });
+  }
+
+  function hydrateModalMeta() {
+    document.querySelectorAll('#filesTable td.meta-cell').forEach(td => {
+      const key = td.getAttribute('data-key') || '';
+      if (!key) { td.textContent = '—'; return; }
+
+      // Use cache if present
+      const cached = META_CACHE.get(key);
+      if (cached !== undefined) {
+        td.textContent = cached;
+        return;
+      }
+
+      td.textContent = '…';
+      fetch(`/api/s3/object_meta?key=${encodeURIComponent(key)}`)
+        .then(r => r.json())
+        .then(({ ok, metadata }) => {
+          const val = (ok && metadata && metadata.version) ? metadata.version : '—';
+          META_CACHE.set(key, val);     // cache for future renders
+          td.textContent = val;
         })
         .catch(() => { td.textContent = '—'; });
     });
@@ -211,6 +239,7 @@
     `).join('');
     tbody.innerHTML = rowsHtml;
     updateFilesSummary();
+    hydrateModalMeta();
   }
 
   function updateFilesSummary() {
