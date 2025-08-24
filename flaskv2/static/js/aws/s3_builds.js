@@ -1,6 +1,15 @@
 // static/js/aws/s3_builds.js
+
+let injectModal;
+
 (function () {
   'use strict';
+
+  const injectModalEl = document.getElementById('injectModal');
+  injectModal = bootstrap.Modal.getOrCreateInstance(injectModalEl, {
+      backdrop: 'static',
+      keyboard: false
+  });
 
   // ----- Page config handed off by Jinja in s3_builds.html -----
   const S3B = window.S3B || {};
@@ -27,6 +36,8 @@
     tbody.innerHTML = `<tr><td colspan="6" class="text-muted">Loading…</td></tr>`;
     sum.textContent = 'Loading…';
 
+    const nextBtn = document.getElementById('inj-next');
+    nextBtn.disabled = true;
     try {
       const resp = await fetch('/api/stacks?state=running', { credentials: 'same-origin' });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -49,7 +60,41 @@
       tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Failed to load running stacks.</td></tr>`;
       sum.textContent = '0 stacks';
       console.error('loadRunningStacks error:', err);
-    }
+    } finally {
+      nextBtn.disabled = false;
+    } 
+  }
+
+  function resetInjectModalUI() {
+    // steps
+    goStep(1);
+    document.getElementById('inj-hint').textContent = 'Pick the Landmark stack that will receive the files.';
+
+    // progress pane
+    const prog = document.getElementById('inj-progress');
+    prog.classList.add('d-none');
+    document.getElementById('inj-log').textContent = '';
+    const badge = document.getElementById('inj-status-badge');
+    badge.className = 'badge bg-secondary';
+    badge.textContent = 'Pending';
+
+    // footer buttons
+    const submitBtn = document.getElementById('inj-submit');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Inject Builds';
+    submitBtn.onclick = null; // remove any previous Close handler
+
+    // state
+    injectState.selectedFiles.clear();
+    injectState.selectedStack = null;
+
+    // step tables
+    document.querySelector('#stacksTable tbody').innerHTML = '';
+    document.querySelector('#filesTable tbody').innerHTML = '';
+    document.getElementById('stacksSummary').textContent = '0 stacks';
+    document.getElementById('filesSummary').textContent = '0 selected';
+    const filt = document.getElementById('stackFilter');
+    if (filt) filt.value = '';
   }
 
   function showProgressUI() {
@@ -159,7 +204,7 @@
           const val = (ok && metadata && metadata.version) ? metadata.version : '—';
           META_CACHE.set(key, val);
           td.textContent = val;
-        })
+        }).catch(() => { td.textContent = '—'; });
     });
   }
 
@@ -351,13 +396,6 @@
       }
     });
 
-    // ----- Bootstrap modal (single shared instance) -----
-    const injectModalEl = document.getElementById('injectModal');
-    const injectModal = bootstrap.Modal.getOrCreateInstance(injectModalEl, {
-      backdrop: 'static',
-      keyboard: false
-    });
-
     // Open modal from Inject button
     $('#buildsTable tbody').on('click', '.btn-inject', async function () {
       const tr  = $(this).closest('tr');
@@ -372,7 +410,8 @@
       // Header
       document.getElementById('inj-prefix').textContent = injectState.displayPrefix;
 
-      goStep(1); // Start at step 1
+      resetInjectModalUI();
+      
       injectModal.show(); // Show modal
 
       // Step 1: stacks
@@ -485,10 +524,7 @@
         const submitBtn = document.getElementById('inj-submit');
         submitBtn.disabled = false;
         submitBtn.textContent = 'Close';
-        submitBtn.onclick = () => {
-          const injectModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('injectModal'));
-          injectModal.hide();
-        };
+        submitBtn.onclick = () => { injectModal.hide(); };
       }
     });
 
@@ -515,10 +551,7 @@
           done = true;
           submitBtn.disabled = false;
           submitBtn.textContent = 'Close';
-          submitBtn.onclick = () => {
-            const injectModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('injectModal'));
-            injectModal.hide();
-          };
+          submitBtn.onclick = () => { injectModal.hide(); };
           break;
         }
 
@@ -529,10 +562,7 @@
 
     // Optional: reset wizard on close
     injectModalEl.addEventListener('hidden.bs.modal', () => {
-      goStep(1);
-      document.getElementById('inj-hint').textContent = '';
-      injectState.selectedFiles.clear();
-      injectState.selectedStack = null;
+      resetInjectModalUI();
     });
   });
 })();
