@@ -8,7 +8,7 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
 
 
 from botocore.exceptions import ClientError, WaiterError
@@ -460,3 +460,16 @@ def s3_object_meta():
 
     data = get_object_version_meta(bucket="migops", root="LARS/", rel_key=rel_key)
     return jsonify({"ok": True, "metadata": data})
+
+@main.route("/api/stacks")
+@login_required
+def api_stacks():
+    state = (request.args.get("state") or "").lower()
+    # Strict: a stack is "running" only if all 4 required roles are running,
+    # and we return just the Landmark app instance (INFORBCLM01LInstance).
+    if state == "running":
+        data = get_running_landmark_targets(region="us-east-1")
+        return jsonify(data)
+    # Optional fallback: full summary (if you ever need it)
+    data = get_stacks_summary(region="us-east-1")
+    return jsonify(data)

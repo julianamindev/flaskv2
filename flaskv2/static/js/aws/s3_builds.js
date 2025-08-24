@@ -17,6 +17,38 @@
     'grid-installer.jar',
   ]);
 
+  async function loadRunningStacks() {
+    const sum = document.getElementById('stacksSummary');
+    const tbody = document.querySelector('#stacksTable tbody');
+    // quick loading state
+    tbody.innerHTML = `<tr><td colspan="6" class="text-muted">Loading…</td></tr>`;
+    sum.textContent = 'Loading…';
+
+    try {
+      const resp = await fetch('/api/stacks?state=running', { credentials: 'same-origin' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const list = await resp.json();
+
+      // Adapt to your table columns (Name, Instance ID, Env, Region, Uptime)
+      // Uptime may be unknown here; we’ll leave it blank.
+      renderStacks(list.map(s => ({
+        id: s.id,
+        name: s.name,
+        env: s.env || '',
+        region: s.region || '',
+        uptime: ''  // optional later
+      })));
+
+      // reset filter & counts
+      document.getElementById('stackFilter').value = '';
+      filterStacks('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Failed to load running stacks.</td></tr>`;
+      sum.textContent = '0 stacks';
+      console.error('loadRunningStacks error:', err);
+    }
+  }  
+
   // ----- Build DataTable rows from PREFIX_MAP -----
   function buildRows() {
     return Object.entries(PREFIX_MAP).map(([prefix, files]) => {
@@ -110,13 +142,6 @@
     selectedStack: null, // {id, name, env, region, uptime}
     selectedFiles: new Set()
   };
-
-  // Seeded stacks (replace with API later)
-  const STACKS_SEEDED = [
-    { id: 'i-0a1b2c3d', name: 'LM-Prod-1', env: 'PROD', region: 'ap-southeast-1', uptime: '3d 4h' },
-    { id: 'i-123abc45', name: 'LM-Stg-1',  env: 'STG',  region: 'ap-southeast-1', uptime: '8h 12m' },
-    { id: 'i-9f8e7d6c', name: 'LM-Dev-2',  env: 'DEV',  region: 'ap-southeast-1', uptime: '54m'  },
-  ];
 
   function goStep(n) {
     // show/hide steps
@@ -254,30 +279,25 @@
     });
 
     // Open modal from Inject button
-    $('#buildsTable tbody').on('click', '.btn-inject', function () {
+    $('#buildsTable tbody').on('click', '.btn-inject', async function () {
       const tr  = $(this).closest('tr');
       const row = dt.row(tr).data();
 
-      // Seed state
       injectState.displayPrefix = this.dataset.prefix || row.displayPrefix;
       injectState.keyPrefix     = this.dataset.keyprefix || row.keyPrefix;
-      injectState.files         = (row.files || []).slice();   // shallow copy
-      injectState.selectedFiles = new Set();                   // reset
+      injectState.files         = (row.files || []).slice();
+      injectState.selectedFiles = new Set();
       injectState.selectedStack = null;
 
       // Header
       document.getElementById('inj-prefix').textContent = injectState.displayPrefix;
 
+      goStep(1); // Start at step 1
+      injectModal.show(); // Show modal
+
       // Step 1: stacks
-      renderStacks(STACKS_SEEDED);   // later: swap to fetch('/api/stacks?...')
-      document.getElementById('stackFilter').value = '';
-      filterStacks('');
-
-      // Start at step 1
-      goStep(1);
-
-      // Show modal
-      injectModal.show();
+      await loadRunningStacks();
+      
     });
 
     // Stack filter
