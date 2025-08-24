@@ -858,10 +858,9 @@ CLEAR_LIST = [
     "mt_dependencies.txt",
 ]
 
-def _build_inject_script(bucket: str, root: str, key_prefix: str, files: List[str]) -> List[str]:
+def _build_inject_script(bucket: str, root: str, key_prefix: str, files: list[str]) -> list[str]:
     """
-    Returns a list of shell commands to be executed by SSM AWS-RunShellScript.
-    key_prefix: "" or "MT/AUG/" etc (relative to root). root like "LARS/"
+    Build the shell commands for AWS-RunShellScript. key_prefix is "" or like "MT/AUG/".
     """
     s3_base = f"s3://{bucket}/{root}{key_prefix}"
     dest = "/opt/infor/landmark/tmp"
@@ -869,16 +868,17 @@ def _build_inject_script(bucket: str, root: str, key_prefix: str, files: List[st
     cmds = [
         "set -euo pipefail",
         f'DEST="{dest}"',
-        'echo "[info] creating destination ${DEST}"',
-        "mkdir -p \"$DEST\"",
+        'echo "[info] creating destination $DEST"',
+        'mkdir -p "$DEST"',
         'echo "[info] pre-clearing known files"',
     ]
-    # preclear
-    for f in CLEAR_LIST:
-        cmds.append(f'echo " - rm -f ${DEST}/{f}"')
-        cmds.append(f'rm -f "$DEST/{f}" || true')
 
-    # copy loop
+    # pre-clear target files (no braces in $DEST to avoid f-string collisions)
+    for fname in CLEAR_LIST:
+        cmds.append(f'echo " - rm -f $DEST/{fname}"')
+        cmds.append(f'rm -f "$DEST/{fname}" || true')
+
+    # copy selected files
     cmds.append('echo "[info] copying selected files"')
     for name in files:
         s3_src = f"{s3_base}{name}"
@@ -888,7 +888,7 @@ def _build_inject_script(bucket: str, root: str, key_prefix: str, files: List[st
     # final listing
     cmds += [
         'echo "[info] final destination listing:"',
-        'ls -lah "$DEST" || true'
+        'ls -lah "$DEST" || true',
     ]
     return cmds
 
