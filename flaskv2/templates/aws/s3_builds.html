@@ -186,8 +186,10 @@
     });
 
     $('#buildsTable tbody').on('click', '.btn-inject', function () {
+        const dtApi = $('#buildsTable').DataTable();
+        
         const tr   = $(this).closest('tr');
-        const row  = dt.row(tr).data();                 // full row data (displayPrefix, keyPrefix, files, files_count)
+        const row  = dtApi.row(tr).data();
         const pref = this.getAttribute('data-prefix');  // e.g., "LARS/" or "MT/AUG/"
         const kpre = this.getAttribute('data-keyprefix'); // e.g., "" or "MT/AUG/"
         console.log('Inject clicked:', { pref, kpre, row });
