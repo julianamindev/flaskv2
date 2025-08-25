@@ -12,7 +12,7 @@ TMP_BUILDS_CLEAR_LIST = [
     "mt_dependencies.txt",
 ]
 
-TMP_BUILDS_FILTER_REGEX = r"Install-.*\.jar|mt_dependencies\.txt|MIG_scripts\.jar"
+TMP_BUILDS_FILTER_REGEX = r"Install-.*\.jar|mt_dependencies\.txt|MIG_scripts\.jar|LANDMARK\.jar|grid-installer\.jar"
 
 # --------------------------------------------------------
 # --------------------------------------------------------
