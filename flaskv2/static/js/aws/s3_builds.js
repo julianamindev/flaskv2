@@ -43,14 +43,10 @@ let injectModal;
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const list = await resp.json();
 
-      // Adapt to your table columns (Name, Instance ID, Env, Region, Uptime)
-      // Uptime may be unknown here; we’ll leave it blank.
       renderStacks(list.map(s => ({
         id: s.id,
         name: s.name,
-        env: s.env || '',
         region: s.region || '',
-        uptime: ''  // optional later
       })));
 
       // reset filter & counts
@@ -251,7 +247,7 @@ let injectModal;
     displayPrefix: '',   // "LARS/" or "MT/AUG/"
     keyPrefix: '',       // "" or "MT/AUG/"
     files: [],           // files available under keyPrefix
-    selectedStack: null, // {id, name, env, region, uptime}
+    selectedStack: null, // {id, name, region}
     selectedFiles: new Set()
   };
 
@@ -286,9 +282,7 @@ let injectModal;
         <td><input type="radio" name="stackPick" value="${s.id}" aria-label="Select ${s.name}"></td>
         <td>${s.name}</td>
         <td><code>${s.id}</code></td>
-        <td>${s.env || ''}</td>
         <td>${s.region || ''}</td>
-        <td>${s.uptime || ''}</td>
       </tr>
     `).join('');
     tbody.innerHTML = rowsHtml;
@@ -432,9 +426,7 @@ let injectModal;
         injectState.selectedStack = {
           id,
           name:   tr.children[1].textContent,
-          env:    tr.children[3].textContent,
-          region: tr.children[4].textContent,
-          uptime: tr.children[5].textContent
+          region: tr.children[3].textContent
         };
       }
     });

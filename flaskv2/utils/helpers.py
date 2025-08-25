@@ -837,10 +837,6 @@ def get_stacks_summary(*, region: str = "us-east-1") -> List[Dict[str, Any]]:
                 "client": info.get("client") or "-",
                 "state": classify_stack(info.get("states", [])),
                 "alwayson": info.get("alwayson", "Off"),
-                # Optional extras you might want in templates later:
-                # "region": info["region"],
-                # "env": info.get("env"),
-                # "instances": info.get("instance_ids", []),
             }
         )
     return out
