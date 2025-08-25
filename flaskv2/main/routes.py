@@ -505,6 +505,7 @@ def api_inject():
             key_prefix=key_prefix,
             files=files,
             region="us-east-1",
+            run_as_user="lawson",
         )
         return jsonify({"ok": True, "job_id": cmd_id, "instance_id": instance_id})
     except Exception as e:

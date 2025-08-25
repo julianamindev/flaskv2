@@ -11,8 +11,12 @@ side_nav_items = {
                     "route": "main.lars2aws",
                 },
                 {
-                    "text": "S3 Builds",
+                    "text": "S3 LARS Builds",
                     "route": "main.s3_builds",
+                },
+                {
+                    "text": "Stacks View",
+                    "route": "main.instances",
                 },
             ]
         },

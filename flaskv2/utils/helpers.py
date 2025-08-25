@@ -3,7 +3,7 @@ import subprocess
 from typing import Any, Dict, List, Optional
 import boto3
 import csv, io, requests, os, re
-
+import shlex
 from flask import current_app
 from flaskv2.extensions import cache
 from datetime import datetime
@@ -857,14 +857,22 @@ CLEAR_LIST = [
     "mt_dependencies.txt",
 ]
 
-def _build_inject_script(bucket: str, root: str, key_prefix: str, files: list[str]) -> list[str]:
+def _build_inject_script(
+        bucket: str,
+        root: str,
+        key_prefix: str,
+        files: list[str],
+        run_as_user: Optional[str] = None
+) -> list[str]:
+    
     """
-    Build the shell commands for AWS-RunShellScript. key_prefix is "" or like "MT/AUG/".
+    Build one launcher command for AWS-RunShellScript.
+    If run_as_user is set (e.g., 'lawson'), the whole script runs as that user.
     """
     s3_base = f"s3://{bucket}/{root}{key_prefix}"
     dest = "/opt/infor/landmark/tmp"
 
-    cmds = [
+    lines: List[str] = [
         "set -euo pipefail",
         f'DEST="{dest}"',
         'echo "[info] destination: $DEST"',
@@ -874,31 +882,46 @@ def _build_inject_script(bucket: str, root: str, key_prefix: str, files: list[st
 
     # pre-clear target files (no braces in $DEST to avoid f-string collisions)
     for fname in CLEAR_LIST:
-        cmds.append(f'echo " - rm -f $DEST/{fname}"')
-        cmds.append(f'rm -f "$DEST/{fname}" || true')
+        lines.append(f'echo " - rm -f $DEST/{fname}"')
+        lines.append(f'rm -f "$DEST/{fname}" || true')
 
     # copy selected files
-    cmds.append('echo "[info] copying selected files"')
+    lines.append('echo "[info] copying selected files"')
     for name in files:
         s3_src = f"{s3_base}{name}"
-        cmds.append(f'echo " - aws s3 cp {s3_src} $DEST/"')
-        cmds.append(f'aws s3 cp "{s3_src}" "$DEST/" --only-show-errors')
+        lines.append(f'echo " - aws s3 cp {s3_src} $DEST/"')
+        lines.append(f'aws s3 cp "{s3_src}" "$DEST/" --only-show-errors')
 
     # final listing
-    cmds += [
-        'echo "[info] final destination listing:"',
-        'ls -lah "$DEST" | grep -E "Install-.*\\.jar|mt_dependencies\\.txt|MIG_scripts\\.jar" || true',
+    lines += [
+        'echo "[info] final destination listing (filtered):"',
+        'ls -lah "$DEST" | grep -E "Install-.*\\.jar|mt_dependencies\\.txt|MIG_scripts.jar" || true',
     ]
-    return cmds
+
+    # Join as a single script and launch it once
+    script = "\n".join(lines)
+
+    if run_as_user:
+        # run everything as that user with a login shell for PATH/env
+        launcher = f"sudo -u {shlex.quote(run_as_user)} bash -lc {shlex.quote(script)}"
+    else:
+        launcher = f"bash -lc {shlex.quote(script)}"
+
+    # AWS-RunShellScript expects a list[str]; we pass a single, wrapped command
+    return [launcher]
 
 def send_inject_command(
-    *, instance_id: str, bucket: str, root: str, key_prefix: str, files: List[str], region: str = "us-east-1"
+    *,
+    instance_id: str,
+    bucket: str,
+    root: str,
+    key_prefix: str,
+    files: List[str],
+    region: str = "us-east-1",
+    run_as_user: Optional[str] = None,   # <— NEW
 ) -> str:
-    """
-    Launch SSM AWS-RunShellScript to preclear and copy files. Returns CommandId.
-    """
     ssm = boto3.client("ssm", region_name=region)
-    commands = _build_inject_script(bucket, root, key_prefix, files)
+    commands = _build_inject_script(bucket, root, key_prefix, files, run_as_user=run_as_user)
     resp = ssm.send_command(
         InstanceIds=[instance_id],
         DocumentName="AWS-RunShellScript",
