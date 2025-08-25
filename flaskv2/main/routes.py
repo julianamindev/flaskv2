@@ -8,7 +8,9 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, send_inject_command, ssm_get_command_status, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
+
+from flaskv2.utils.ssm import send_inject_command, ssm_get_command_status
 
 
 from botocore.exceptions import ClientError, WaiterError
@@ -475,7 +477,6 @@ def api_stacks():
     return jsonify(data)
 
 
-
 #### INJECT ROUTES
 
 @main.route("/api/inject", methods=["POST"])
@@ -505,8 +506,9 @@ def api_inject():
             key_prefix=key_prefix,
             files=files,
             region="us-east-1",
-            run_as_user="lawson",             # or None to run as root
-            use_login_shell=False,            # keep False to avoid ~/.bash_profile issues
+            run_as_user="lawson", # or None to run as root
+            use_login_shell=False, # keep False to avoid ~/.bash_profile issues
+            
             # Optional: capture full logs
             # output_s3_bucket="migops",
             # output_s3_prefix=f"ssm/inject-builds/{instance_id}",
