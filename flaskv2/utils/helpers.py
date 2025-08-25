@@ -846,7 +846,9 @@ def get_stacks_summary(*, region: str = "us-east-1") -> List[Dict[str, Any]]:
     return out
 
 
-### SSM HELPERS
+# ----------------------------
+# Inject-specific thin builder
+# ----------------------------
 
 CLEAR_LIST = [
     "Install-LMMIG.jar",
@@ -857,58 +859,54 @@ CLEAR_LIST = [
     "mt_dependencies.txt",
 ]
 
-def _build_inject_script(
-        bucket: str,
-        root: str,
-        key_prefix: str,
-        files: list[str],
-        run_as_user: Optional[str] = None
-) -> list[str]:
-    
+def build_inject_lines(
+    *,
+    bucket: str,
+    root: str,
+    key_prefix: str,
+    files: List[str],
+    dest: str = "/opt/infor/landmark/tmp",
+    ensure_dest_exists: bool = True,
+    filtered_listing: bool = True,
+) -> List[str]:
     """
-    Build one launcher command for AWS-RunShellScript.
-    If run_as_user is set (e.g., 'lawson'), the whole script runs as that user.
+    Build the shell lines to pre-clear and copy selected files into DEST.
+    Does not create DEST; will fail fast if ensure_dest_exists=True and it doesn't exist.
     """
     s3_base = f"s3://{bucket}/{root}{key_prefix}"
-    dest = "/opt/infor/landmark/tmp"
 
     lines: List[str] = [
+        # 'export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"',
         "set -euo pipefail",
         f'DEST="{dest}"',
         'echo "[info] destination: $DEST"',
-        'test -d "$DEST" || { echo "[error] destination does not exist: $DEST"; exit 1; }',
-        'echo "[info] pre-clearing known files"',
     ]
+    if ensure_dest_exists:
+        lines.append('test -d "$DEST" || { echo "[error] destination does not exist: $DEST"; exit 1; }')
 
-    # pre-clear target files (no braces in $DEST to avoid f-string collisions)
+    lines.append('echo "[info] pre-clearing known files"')
     for fname in CLEAR_LIST:
         lines.append(f'echo " - rm -f $DEST/{fname}"')
-        lines.append(f'rm -f "$DEST/{fname}" || true')
+        lines.append(f'rm -f "$DEST/{fname}" || true') # DO NOT MESS WITH THIS COMMAND
 
-    # copy selected files
     lines.append('echo "[info] copying selected files"')
     for name in files:
         s3_src = f"{s3_base}{name}"
         lines.append(f'echo " - aws s3 cp {s3_src} $DEST/"')
         lines.append(f'aws s3 cp "{s3_src}" "$DEST/" --only-show-errors')
 
-    # final listing
-    lines += [
-        'echo "[info] final destination listing (filtered):"',
-        'ls -lah "$DEST" | grep -E "Install-.*\\.jar|mt_dependencies\\.txt|MIG_scripts.jar" || true',
-    ]
-
-    # Join as a single script and launch it once
-    script = "\n".join(lines)
-
-    if run_as_user:
-        # run everything as that user with a login shell for PATH/env
-        launcher = f"sudo -u {shlex.quote(run_as_user)} bash --noprofile --norc -c {shlex.quote(script)}"
+    if filtered_listing:
+        lines += [
+            'echo "[info] final destination listing (filtered):"',
+            'ls -lah "$DEST" | grep -E "Install-.*\\.jar|mt[-_]dependencies\\.txt" || true',
+        ]
     else:
-        launcher = f"bash -lc {shlex.quote(script)}"
+        lines += [
+            'echo "[info] final destination listing:"',
+            'ls -lah "$DEST" || true',
+        ]
 
-    # AWS-RunShellScript expects a list[str]; we pass a single, wrapped command
-    return [launcher]
+    return lines
 
 def send_inject_command(
     *,
@@ -918,49 +916,138 @@ def send_inject_command(
     key_prefix: str,
     files: List[str],
     region: str = "us-east-1",
-    run_as_user: Optional[str] = None,   # <— NEW
+    run_as_user: Optional[str] = None,
+    use_login_shell: bool = False,
+    # optional logs:
+    output_s3_bucket: Optional[str] = None,
+    output_s3_prefix: Optional[str] = None,
+    cloudwatch_log_group: Optional[str] = None,
+    timeout_seconds: Optional[int] = None,
 ) -> str:
-    ssm = boto3.client("ssm", region_name=region)
-    commands = _build_inject_script(bucket, root, key_prefix, files, run_as_user=run_as_user)
-    resp = ssm.send_command(
-        InstanceIds=[instance_id],
-        DocumentName="AWS-RunShellScript",
-        Parameters={"commands": commands},
-        CloudWatchOutputConfig={"CloudWatchOutputEnabled": False},
+    """
+    Thin wrapper that uses the generic ssm_run_shell helper.
+    """
+    lines = build_inject_lines(
+        bucket=bucket,
+        root=root,
+        key_prefix=key_prefix,
+        files=files,
+        ensure_dest_exists=True,
+        filtered_listing=True,
     )
+    cmd_id = ssm_run_shell(
+        instance_ids=[instance_id],
+        lines=lines,
+        region=region,
+        run_as_user=run_as_user,        # e.g., "lawson" or None to run as root
+        use_login_shell=use_login_shell,# default False to avoid ~/.bash_profile noise
+        output_s3_bucket=output_s3_bucket,
+        output_s3_prefix=output_s3_prefix,
+        # cloudwatch_log_group=cloudwatch_log_group,
+        timeout_seconds=timeout_seconds,
+        comment=f"Inject builds to {instance_id} from s3://{bucket}/{root}{key_prefix}",
+    )
+    return cmd_id
+
+# ----------------------------
+# Generic SSM helpers
+# ----------------------------
+
+def ssm_run_shell(
+    *,
+    instance_ids: List[str],
+    lines: List[str],
+    region: str = "us-east-1",
+    run_as_user: Optional[str] = None,
+    use_login_shell: bool = False,
+    # Output options (all optional):
+    output_s3_bucket: Optional[str] = None,
+    output_s3_prefix: Optional[str] = None,
+    # cloudwatch_log_group: Optional[str] = None,
+    timeout_seconds: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """
+    Send an AWS-RunShellScript command to one or more instances.
+
+    - `lines`: the shell lines to run (we wrap them into a single subshell)
+    - `run_as_user`: run everything as this user (via sudo)
+    - `use_login_shell`: True -> bash -lc (reads profile); False -> bash --noprofile --norc
+    - output_* and cloudwatch_log_group: enable S3/CW logs if you want full logs
+    - returns the SSM CommandId
+    """
+    if not instance_ids:
+        raise ValueError("instance_ids must be non-empty")
+    if not lines:
+        raise ValueError("lines must be non-empty")
+
+    # Build the single script
+    script = "\n".join(lines)
+
+    # Choose the shell invocation
+    if use_login_shell:
+        shell_inv = f"bash -lc {shlex.quote(script)}"
+    else:
+        shell_inv = f"bash --noprofile --norc -c {shlex.quote(script)}"
+
+    # Run entirely as another user, if requested
+    if run_as_user:
+        launcher = f"sudo -u {shlex.quote(run_as_user)} {shell_inv}"
+    else:
+        launcher = shell_inv
+
+    params: Dict[str, Any] = {
+        "InstanceIds": instance_ids,
+        "DocumentName": "AWS-RunShellScript",
+        "Parameters": {"commands": [launcher]},
+    }
+    if timeout_seconds is not None:
+        params["TimeoutSeconds"] = int(timeout_seconds)
+
+    # Optional outputs
+    # cwo: Dict[str, Any] = {}
+    # if cloudwatch_log_group:
+    #     cwo.update({
+    #         "CloudWatchOutputEnabled": True,
+    #         "CloudWatchLogGroupName": cloudwatch_log_group,
+    #     })
+    # else:
+    #     # you can still turn this on later; default off to keep IAM simple
+    #     cwo.update({"CloudWatchOutputEnabled": False})
+    # params["CloudWatchOutputConfig"] = cwo
+
+    if output_s3_bucket:
+        params["OutputS3BucketName"] = output_s3_bucket
+        if output_s3_prefix:
+            params["OutputS3KeyPrefix"] = output_s3_prefix
+
+    if comment:
+        params["Comment"] = comment
+
+    ssm = boto3.client("ssm", region_name=region)
+    resp = ssm.send_command(**params)
     return resp["Command"]["CommandId"]
 
-def get_inject_status(
-    *, command_id: str, instance_id: str, region: str = "us-east-1"
+def ssm_get_command_status(
+    *,
+    command_id: str,
+    instance_id: str,
+    region: str = "us-east-1",
 ) -> Dict[str, Any]:
     """
-    Returns {ok, status, stdout, stderr, status_details}
-    status in: Pending | InProgress | Delayed | Success | Cancelled | Failed | TimedOut | Cancelling
+    Read back status + stdout/stderr (and S3/CW URLs if enabled).
+    Uses GetCommandInvocation so we can also surface StandardOutputUrl.
     """
     ssm = boto3.client("ssm", region_name=region)
-    invs = ssm.list_command_invocations(
-        CommandId=command_id, InstanceId=instance_id, Details=True
-    )
-    if not invs.get("CommandInvocations"):
-        return {"ok": True, "status": "Pending", "stdout": "", "stderr": "", "status_details": ""}
+    inv = ssm.get_command_invocation(CommandId=command_id, InstanceId=instance_id)
 
-    inv = invs["CommandInvocations"][0]
-    status = inv.get("Status") or "Pending"
-    plug = inv.get("CommandPlugins") or []
-    stdout = ""
-    stderr = ""
-    if plug:
-        # Concatenate outputs from plugins (usually just one for RunShellScript)
-        for p in plug:
-            stdout += (p.get("Output", "") or "")
-            if p.get("Status") in ("Failed", "TimedOut"):
-                stderr += (p.get("Output", "") or "")
     return {
         "ok": True,
-        "status": status,
-        "stdout": stdout,
-        "stderr": stderr,
-        "status_details": inv.get("StatusDetails") or status,
+        "status": inv.get("Status") or "Pending",
+        "status_details": inv.get("StatusDetails") or "",
+        "stdout": inv.get("StandardOutputContent") or "",
+        "stderr": inv.get("StandardErrorContent") or "",
+        "stdout_url": inv.get("StandardOutputUrl") or "",
+        "stderr_url": inv.get("StandardErrorUrl") or "",
     }
-
 
