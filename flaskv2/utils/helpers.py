@@ -887,7 +887,7 @@ def _build_inject_script(bucket: str, root: str, key_prefix: str, files: list[st
     # final listing
     cmds += [
         'echo "[info] final destination listing:"',
-        'ls -lah "$DEST" | grep -E "Install-.*\\.jar|mt_dependencies\\.txt" || true',
+        'ls -lah "$DEST" | grep -E "Install-.*\\.jar|mt_dependencies\\.txt|MIG_scripts\\.jar" || true',
     ]
     return cmds
 
