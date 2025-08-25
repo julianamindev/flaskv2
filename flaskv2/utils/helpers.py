@@ -854,7 +854,6 @@ CLEAR_LIST = [
     "Install-LMIEFIN.jar",
     "LANDMARK.jar",
     "grid-installer.jar",
-    "mt-dependencies.txt",
     "mt_dependencies.txt",
 ]
 
@@ -868,8 +867,8 @@ def _build_inject_script(bucket: str, root: str, key_prefix: str, files: list[st
     cmds = [
         "set -euo pipefail",
         f'DEST="{dest}"',
-        'echo "[info] creating destination $DEST"',
-        'mkdir -p "$DEST"',
+        'echo "[info] destination: $DEST"',
+        'test -d "$DEST" || { echo "[error] destination does not exist: $DEST"; exit 1; }',
         'echo "[info] pre-clearing known files"',
     ]
 
@@ -888,7 +887,7 @@ def _build_inject_script(bucket: str, root: str, key_prefix: str, files: list[st
     # final listing
     cmds += [
         'echo "[info] final destination listing:"',
-        'ls -lah "$DEST" || true',
+        'ls -lah "$DEST" | grep -E "Install-.*\\.jar|mt_dependencies\\.txt" || true',
     ]
     return cmds
 
