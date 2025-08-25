@@ -903,7 +903,7 @@ def _build_inject_script(
 
     if run_as_user:
         # run everything as that user with a login shell for PATH/env
-        launcher = f"sudo -u {shlex.quote(run_as_user)} bash -lc {shlex.quote(script)}"
+        launcher = f"sudo -u {shlex.quote(run_as_user)} bash --noprofile --norc -c {shlex.quote(script)}"
     else:
         launcher = f"bash -lc {shlex.quote(script)}"
 
