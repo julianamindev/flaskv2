@@ -8,6 +8,11 @@ from flask_login import current_user, login_required, logout_user
 
 from flaskv2.main.forms import BlankForm
 from flaskv2.models import User
+from flaskv2.utils.contants import (
+    TMP_BUILDS_CLEAR_LIST,
+    TMP_BUILDS_FILTER_REGEX,
+    TMP_DIR
+)
 from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
 
 from flaskv2.utils.ssm import send_inject_command, ssm_get_command_status
@@ -506,14 +511,10 @@ def api_inject():
             key_prefix=key_prefix,
             files=files,
             region="us-east-1",
-            run_as_user="lawson", # or None to run as root
-            use_login_shell=False, # keep False to avoid ~/.bash_profile issues
-            
-            # Optional: capture full logs
-            # output_s3_bucket="migops",
-            # output_s3_prefix=f"ssm/inject-builds/{instance_id}",
-            # cloudwatch_log_group="/aws/ssm/inject-builds",
-            # timeout_seconds=900,
+            dest=TMP_DIR,
+            preclear_names=TMP_BUILDS_CLEAR_LIST,
+            filtered_listing=True,
+            list_filter_regex=TMP_BUILDS_FILTER_REGEX
         )
         return jsonify({"ok": True, "job_id": cmd_id, "instance_id": instance_id})
     except Exception as e:

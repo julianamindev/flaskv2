@@ -93,7 +93,7 @@ def build_inject_lines(
     ensure_dest_exists: bool = True,
     preclear_names: list[str] | None = None,     # None => use default CLEAR_LIST; [] => skip preclear
     filtered_listing: bool = False,
-    list_filter_regex: str | None = None,       # r"Install-.*\.jar|mt_dependencies\.txt|MIG_scripts\.jar",
+    list_filter_regex: str | None = None,
     extra_before: list[str] | None = None,       # injected after set -euo...
     extra_after: list[str] | None = None,        # injected before final listing
 ) -> list[str]:
@@ -196,7 +196,7 @@ def send_inject_command(
         instance_ids=[instance_id],
         lines=lines,
         region=region,
-        run_as_user=run_as_user,            # e.g., "lawson" or None
-        use_login_shell=use_login_shell,    # keep False to avoid noisy profiles
+        run_as_user=run_as_user,
+        use_login_shell=use_login_shell,
         comment=f"Inject builds to {instance_id} from s3://{bucket}/{root}{key_prefix}",
     )
