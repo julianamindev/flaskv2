@@ -45,7 +45,7 @@ def _selected_from_form(form):
 #     return redirect(url_for("main.home"), code=302)
 
 # @main.route("/home")
-# @login_required
+# @login_requiredb
 # def home():
 #     current_app.app_log.info("view_dashboard")  
 #     return render_template("dashboard.html")
@@ -163,33 +163,33 @@ def user_list():
         flash("Could not load users at the moment.", "warning")
         return redirect(url_for("main.home"))
 
-# @main.route("/check-session")
-# def check_session():
-#     if not current_user.is_authenticated:
-#         audit("session_check_unauthenticated", outcome="redirect_login", force_log=True)
-#         flash("Session expired. Please log in again.", "warning")
-#         return redirect(url_for('users.login'))
+@main.route("/check-session")
+def check_session():
+    if not current_user.is_authenticated:
+        audit("session_check_unauthenticated", outcome="redirect_login", force_log=True)
+        flash("Session expired. Please log in again.", "warning")
+        return redirect(url_for('users.login'))
 
-#     login_time = session.get('login_time')
-#     if login_time:
-#         now = datetime.now(timezone.utc).timestamp()
-#         timeout = current_app.permanent_session_lifetime.total_seconds()
-#         age = now - login_time
-#         if age > timeout:
-#             username = getattr(current_user, "username", "-")
-#             logout_user()
-#             session.pop('login_time', None)
-#             audit(
-#                 "session_expired",
-#                 reason="timeout",
-#                 max_age_seconds=timeout,
-#                 session_age_seconds=round(age, 2),
-#                 force_log=True
-#             )
-#             flash("Session expired. Please log in again.", "warning")
-#             return redirect(url_for('users.login'))
+    login_time = session.get('login_time')
+    if login_time:
+        now = datetime.now(timezone.utc).timestamp()
+        timeout = current_app.permanent_session_lifetime.total_seconds()
+        age = now - login_time
+        if age > timeout:
+            username = getattr(current_user, "username", "-")
+            logout_user()
+            session.pop('login_time', None)
+            audit(
+                "session_expired",
+                reason="timeout",
+                max_age_seconds=timeout,
+                session_age_seconds=round(age, 2),
+                force_log=True
+            )
+            flash("Session expired. Please log in again.", "warning")
+            return redirect(url_for('users.login'))
 
-#     return '', 204  # still valid; no noise
+    return '', 204  # still valid; no noise
 
 @main.post("/lars2aws/plan")
 @login_required
