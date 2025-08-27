@@ -13,7 +13,7 @@ from flaskv2.utils.contants import (
     TMP_BUILDS_FILTER_REGEX,
     TMP_DIR
 )
-from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, build_prefix_index_from_keys, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item, upload_plan
+from flaskv2.utils.helpers import _get_envnum, _paginate, _sanitize_suffix, get_app_data, get_builds_for_app_stream, get_object_version_meta, get_running_landmark_targets, get_stacks_summary, get_streams_for_app, list_pssc_tasks, plan_artifacts, s3_build_prefix_index, stream_exists_live, upload_item
 
 from flaskv2.utils.ssm import send_inject_command, ssm_get_command_status
 
@@ -40,15 +40,15 @@ def _selected_from_form(form):
             selected[app] = {"stream": s, "build": b}
     return selected
 
-@main.route("/")
-def index():
-    return redirect(url_for("main.home"), code=302)
+# @main.route("/")
+# def index():
+#     return redirect(url_for("main.home"), code=302)
 
-@main.route("/home")
-@login_required
-def home():
-    current_app.app_log.info("view_dashboard")  
-    return render_template("dashboard.html")
+# @main.route("/home")
+# @login_required
+# def home():
+#     current_app.app_log.info("view_dashboard")  
+#     return render_template("dashboard.html")
 
 
 @main.route("/lars2aws", methods=["GET"])
@@ -163,75 +163,33 @@ def user_list():
         flash("Could not load users at the moment.", "warning")
         return redirect(url_for("main.home"))
 
-@main.route("/check-session")
-def check_session():
-    if not current_user.is_authenticated:
-        audit("session_check_unauthenticated", outcome="redirect_login", force_log=True)
-        flash("Session expired. Please log in again.", "warning")
-        return redirect(url_for('users.login'))
+# @main.route("/check-session")
+# def check_session():
+#     if not current_user.is_authenticated:
+#         audit("session_check_unauthenticated", outcome="redirect_login", force_log=True)
+#         flash("Session expired. Please log in again.", "warning")
+#         return redirect(url_for('users.login'))
 
-    login_time = session.get('login_time')
-    if login_time:
-        now = datetime.now(timezone.utc).timestamp()
-        timeout = current_app.permanent_session_lifetime.total_seconds()
-        age = now - login_time
-        if age > timeout:
-            username = getattr(current_user, "username", "-")
-            logout_user()
-            session.pop('login_time', None)
-            audit(
-                "session_expired",
-                reason="timeout",
-                max_age_seconds=timeout,
-                session_age_seconds=round(age, 2),
-                force_log=True
-            )
-            flash("Session expired. Please log in again.", "warning")
-            return redirect(url_for('users.login'))
+#     login_time = session.get('login_time')
+#     if login_time:
+#         now = datetime.now(timezone.utc).timestamp()
+#         timeout = current_app.permanent_session_lifetime.total_seconds()
+#         age = now - login_time
+#         if age > timeout:
+#             username = getattr(current_user, "username", "-")
+#             logout_user()
+#             session.pop('login_time', None)
+#             audit(
+#                 "session_expired",
+#                 reason="timeout",
+#                 max_age_seconds=timeout,
+#                 session_age_seconds=round(age, 2),
+#                 force_log=True
+#             )
+#             flash("Session expired. Please log in again.", "warning")
+#             return redirect(url_for('users.login'))
 
-    return '', 204  # still valid; no noise
-
-
-# @main.post("/lars2aws/upload")
-# @login_required
-# def lars2aws_upload():
-#     """
-#     Upload selected artifacts from LARS to S3.
-#     Expects form POST with:
-#       - summary_<app>_stream
-#       - summary_<app>_build
-#       - migops_lars_suffix  (UI suffix after 'LARS/')
-#     Returns JSON with per-file results.
-#     """
-#     apps = current_app.config.get("LARS_APPS", ["MIG", "HCM", "IEFin", "Landmark"])
-#     suffix = (request.form.get("migops_lars_suffix") or "").strip()
-#     # Hard-enforce LARS/ root in helper; suffix may be blank -> 'LARS/'
-#     all_results = []
-#     any_selected = False
-
-#     for app_name in apps:
-#         s = request.form.get(f"summary_{app_name.lower()}_stream") or ""
-#         b = request.form.get(f"summary_{app_name.lower()}_build") or ""
-#         s, b = s.strip(), b.strip()
-#         if not s or not b:
-#             continue
-#         any_selected = True
-
-#         # Build plan and upload
-#         plan = plan_artifacts(app_name, s, b, suffix_prefix=suffix)
-#         current_app.app_log.info(
-#             "upload plan: user=%s app=%s stream=%s build=%s count=%d",
-#             getattr(getattr(request, "user", None), "username", "-"),
-#             app_name, s, b, len(plan)
-#         )
-#         results = upload_plan(plan)
-#         all_results.extend([{"app": app_name, "stream": s, "build": b, **r} for r in results])
-
-#     if not any_selected:
-#         return jsonify({"ok": False, "message": "No app selections found.", "results": []}), 400
-
-#     ok = all(r.get("ok") for r in all_results) if all_results else False
-#     return jsonify({"ok": ok, "results": all_results})
+#     return '', 204  # still valid; no noise
 
 @main.post("/lars2aws/plan")
 @login_required
@@ -435,27 +393,7 @@ def task_scheduler_list():
 @login_required
 def s3_builds():
     current_app.app_log.info("view_s3_builds")
-
-    # test_keys = [
-    #     "migops/LARS/cloud.jar",
-    #     "migops/LARS/MT/AUG/Install-LMMIG.jar",
-    #     "migops/LARS/MT/AUG/Install-LMIEFIN.jar",
-    #     "migops/LARS/MT/AUG/Install-LMHCM.jar",
-    #     "migops/LARS/MT/AUG/LANDMARK.jar",
-    #     "migops/LARS/MT/AUG/grid-installer.jar",
-    #     "migops/LARS/MT/AUG/MIG_scripts.jar",
-    #     "migops/LARS/MT/AUG/mt_dependencies.txt",
-    #     "migops/LARS/FEATURE/feature1/feature1.txt",
-    #     "migops/LARS/FEATURE/feature1/feature2.txt",
-    #     "migops/LARS/HOTFIX/ccpa/build1.jar",
-    #     "migops/LARS/HOTFIX/ccpa/build2.jar",
-    #     "migops/LARS/HOTFIX/aultman/aultbuild.jar",
-    #     "migops/LARS/MT/SEP/relbuild.jar",
-    # ]
-    # prefix_map = build_prefix_index_from_keys(test_keys)
     prefix_map = s3_build_prefix_index(bucket="migops", root="LARS/")
-
-
     return render_template("aws/s3_builds.html", prefix_map=prefix_map)
 
 @main.route("/api/s3/object_meta")

@@ -27,28 +27,7 @@
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
         <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
 
-        {% if current_user.is_authenticated %}
 
-        <script>
-            const sessionTimeoutMs = {{ config['PERMANENT_SESSION_LIFETIME'].total_seconds() * 1000 | int }};
-            const checkInterval = 10 * 1000;  // check every 10 seconds
-
-            const sessionChecker = setInterval(() => {
-                fetch("{{ url_for('main.check_session') }}", { credentials: "same-origin" })
-                    .then(response => {
-                        if (response.redirected) {
-                            clearInterval(sessionChecker);  // stop further checks
-                            window.location.href = "{{ url_for('main.check_session') }}";
-                        }
-                    })
-                    .catch(error => {
-                        console.error("Session check failed:", error);
-                    });
-            }, checkInterval);
-        </script>
-
-
-        {% endif %}
         
         {% block extra_scripts %}{% endblock %}
     </body>

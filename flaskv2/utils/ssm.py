@@ -86,16 +86,16 @@ def ssm_get_command_status(
 def build_inject_lines(
     *,
     bucket: str,
-    root: str,                # e.g. "LARS/"
-    key_prefix: str,          # e.g. "" or "MT/AUG/"
+    root: str,
+    key_prefix: str,
     files: list[str],
     dest: str = "/opt/infor/landmark/tmp",
     ensure_dest_exists: bool = True,
-    preclear_names: list[str] | None = None,     # None => use default CLEAR_LIST; [] => skip preclear
+    preclear_names: list[str] | None = None,
     filtered_listing: bool = False,
     list_filter_regex: str | None = None,
-    extra_before: list[str] | None = None,       # injected after set -euo...
-    extra_after: list[str] | None = None,        # injected before final listing
+    extra_before: list[str] | None = None,
+    extra_after: list[str] | None = None
 ) -> list[str]:
     """
     Build shell lines for the 'inject builds' task, with configurable knobs.

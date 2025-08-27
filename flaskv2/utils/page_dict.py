@@ -8,15 +8,15 @@ side_nav_items = {
             "child_links": [
                 {
                     "text": "LARS-to-AWS",
-                    "route": "main.lars2aws",
+                    "route": "web.home.dashboard",
                 },
                 {
                     "text": "S3 LARS Builds",
-                    "route": "main.s3_builds",
+                    "route": "web.home.dashboard",
                 },
                 {
                     "text": "Stacks View",
-                    "route": "main.instances",
+                    "route": "web.home.dashboard",
                 },
             ]
         },
@@ -30,11 +30,11 @@ side_nav_items = {
             "child_links": [
                 {
                     "text": "Users List",
-                    "route": "main.user_list",
+                    "route": "web.home.dashboard",
                 },
                 {
                     "text": "Register",
-                    "route": "users.register",
+                    "route": "web.home.dashboard",
                 },
             ]
         },
@@ -44,7 +44,7 @@ side_nav_items = {
             "child_links": [
                 {
                     "text": "Task Scheduler Jobs",
-                    "route": "main.task_scheduler_list",
+                    "route": "web.home.dashboard",
                 }
             ]
         }
