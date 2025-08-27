@@ -34,7 +34,7 @@ side_nav_items = {
                 },
                 {
                     "text": "Register",
-                    "route": "web.home.dashboard",
+                    "route": "web.user.register",
                 },
             ]
         },

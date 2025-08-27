@@ -13,7 +13,7 @@
 
                         {% include "includes/flash_messages.html" %}
 
-                        <form method="POST" action="{{ url_for('users.register') }}">
+                        <form method="POST" action="{{ url_for('web.user.register') }}">
 
                             {{ form.hidden_tag() }}
 
@@ -51,7 +51,7 @@
                         </form>
                     </div>
                     <div class="card-footer text-center py-3">
-                        <div class="small"><a href="{{ url_for('main.home') }}">Go back to dashboard</a></div>
+                        <div class="small"><a href="{{ url_for('web.home.dashboard') }}">Go back to dashboard</a></div>
                     </div>
                 </div>
             </div>
