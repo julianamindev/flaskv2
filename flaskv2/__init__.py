@@ -2,24 +2,14 @@
 from copy import deepcopy
 import os
 
-from flask import Flask, current_app, flash, redirect, request, session, url_for
-from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
-from flask_login import LoginManager, current_user, logout_user
+from flask import Flask, request
+from flask_login import current_user
+
 from flaskv2.config import BaseConfig
 from flaskv2.logging_setup import setup_logging
-from flaskv2.extensions import cache
-from flask_mail import Mail
-
+from flaskv2.extensions import init_extensions
 from flaskv2.utils.helpers import get_app_data, get_streams_for_app, _get_envnum
 from flaskv2.utils.page_dict import side_nav_items
-
-db = SQLAlchemy()
-bcrypt = Bcrypt()
-login_manager = LoginManager()
-login_manager.login_view = 'users.login'
-login_manager.login_message_category = 'info'
-mail = Mail()
 
 def create_app(config_class=BaseConfig):
     app = Flask(__name__)
@@ -61,11 +51,7 @@ def create_app(config_class=BaseConfig):
 
     os.makedirs(app.config["CACHE_DIR"], exist_ok=True)
 
-    db.init_app(app)
-    bcrypt.init_app(app)
-    login_manager.init_app(app)
-    mail.init_app(app)
-    cache.init_app(app)
+    init_extensions(app)
 
     # ---- Warmup at boot ----
     with app.app_context():

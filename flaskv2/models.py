@@ -1,6 +1,6 @@
 
 from flask_login import UserMixin
-from flaskv2 import db, login_manager
+from flaskv2.extensions import db, login_manager
 from flask import current_app
 from itsdangerous import URLSafeTimedSerializer as Serializer
 

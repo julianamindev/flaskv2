@@ -436,24 +436,10 @@ def task_scheduler_list():
 def s3_builds():
     current_app.app_log.info("view_s3_builds")
 
-    # test_keys = [
-    #     "migops/LARS/cloud.jar",
-    #     "migops/LARS/MT/AUG/Install-LMMIG.jar",
-    #     "migops/LARS/MT/AUG/Install-LMIEFIN.jar",
-    #     "migops/LARS/MT/AUG/Install-LMHCM.jar",
-    #     "migops/LARS/MT/AUG/LANDMARK.jar",
-    #     "migops/LARS/MT/AUG/grid-installer.jar",
-    #     "migops/LARS/MT/AUG/MIG_scripts.jar",
-    #     "migops/LARS/MT/AUG/mt_dependencies.txt",
-    #     "migops/LARS/FEATURE/feature1/feature1.txt",
-    #     "migops/LARS/FEATURE/feature1/feature2.txt",
-    #     "migops/LARS/HOTFIX/ccpa/build1.jar",
-    #     "migops/LARS/HOTFIX/ccpa/build2.jar",
-    #     "migops/LARS/HOTFIX/aultman/aultbuild.jar",
-    #     "migops/LARS/MT/SEP/relbuild.jar",
-    # ]
-    # prefix_map = build_prefix_index_from_keys(test_keys)
-    prefix_map = s3_build_prefix_index(bucket="migops", root="LARS/")
+    try:
+        prefix_map = s3_build_prefix_index(bucket="migops", root="LARS/")
+    except ClientError as e:
+        abort(500)
 
 
     return render_template("aws/s3_builds.html", prefix_map=prefix_map)

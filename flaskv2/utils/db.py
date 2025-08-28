@@ -1,5 +1,5 @@
 from sqlalchemy.exc import SQLAlchemyError
-from flaskv2 import db
+from flaskv2.extensions import db
 
 def safe_commit():
     """

@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 
 from markupsafe import Markup
-from flaskv2 import bcrypt, db, mail
+from flaskv2.extensions import bcrypt, db, mail
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
