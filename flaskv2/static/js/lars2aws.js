@@ -320,7 +320,7 @@ $(function () {
 })();
 
 
-// ---- Autofill SR (MIG uses latest 'B', others latest 'R') + loading spinner ----
+// ---- Autofill SR (MIG prefers 'R', falls back to 'B') + loading spinner ----
 (function () {
   const APPS = (window.L2A && window.L2A.APPS) || [];
 
@@ -328,7 +328,6 @@ $(function () {
     d.toLocaleString('en-US', { month: 'short' }).toUpperCase(); // AUG, SEP, ...
 
   function alertUI(msg, type = 'warning') {
-    // fallback if showAlert isn't global
     if (typeof window.showAlert === 'function') return window.showAlert(msg, type);
     const $zone = $('#l2a-alerts');
     $zone.html(`
@@ -350,15 +349,16 @@ $(function () {
     }
   }
 
-  async function fetchLatestBuild(app, streamId, wantedCode /* 'R' or 'B' */) {
+  // NEW: choose latest by a priority list of maturities (e.g., ['R','B'])
+  async function fetchLatestBuildByPriority(app, streamId, priorityCodes) {
     let page = 1;
-    let best = null;
+    const bestByCode = {}; // code -> { item, rank }
 
     const consider = (item) => {
       const maturity = (item.maturity || '').toString().toUpperCase();
       const txt = (item.text || '').trim();
       const code = maturity || (txt.split('--')[0] || '').trim().toUpperCase();
-      if (code !== wantedCode) return;
+      if (!priorityCodes.includes(code)) return;
 
       const idStr = item.release_id != null ? String(item.release_id)
                    : item.id != null ? String(item.id)
@@ -366,11 +366,13 @@ $(function () {
       const idNum = parseInt(idStr, 10);
       const rank = Number.isFinite(idNum) ? idNum : idStr;
 
-      if (!best) best = { item, rank };
-      else if (typeof rank === 'number' && typeof best.rank === 'number') {
-        if (rank > best.rank) best = { item, rank };
-      } else if (String(rank) > String(best.rank)) {
-        best = { item, rank };
+      const cur = bestByCode[code];
+      if (!cur) {
+        bestByCode[code] = { item, rank };
+      } else if (typeof rank === 'number' && typeof cur.rank === 'number') {
+        if (rank > cur.rank) bestByCode[code] = { item, rank };
+      } else if (String(rank) > String(cur.rank)) {
+        bestByCode[code] = { item, rank };
       }
     };
 
@@ -380,7 +382,12 @@ $(function () {
       if (!data.pagination || !data.pagination.more) break;
       page += 1;
     }
-    return best ? best.item : null;
+
+    // Return first match by priority order
+    for (const code of priorityCodes) {
+      if (bestByCode[code]) return bestByCode[code].item;
+    }
+    return null;
   }
 
   function setSelect2Value($select, item) {
@@ -389,7 +396,7 @@ $(function () {
     if ($select.find(`option[value="${val}"]`).length === 0) {
       $select.append(new Option(text, val, true, true));
     }
-    $select.val(val).trigger('change'); // triggers our 'change' listeners to update summary/hidden
+    $select.val(val).trigger('change'); // updates summary/hidden via your listeners
   }
 
   async function processApp(app, rel, migStream) {
@@ -409,20 +416,20 @@ $(function () {
 
     // stream per app
     const stream = app === 'MIG' ? migStream : await fetchStreamExact(app, rel);
-    if (!stream) return; // skip app if stream missing
+    if (!stream) return;
 
     // select stream
     setSelect2Value($stream, stream);
 
-    // latest build (MIG='B', others='R')
-    const wanted = app === 'MIG' ? 'B' : 'R';
-    const bestBuild = await fetchLatestBuild(app, stream.id, wanted);
+    // MIG: prefer R then B; others: R only
+    const priority = app === 'MIG' ? ['R','B'] : ['R'];
+    const bestBuild = await fetchLatestBuildByPriority(app, stream.id, priority);
     if (!bestBuild) return;
 
     // select build
     setSelect2Value($build, bestBuild);
 
-    // explicitly update summary/hidden (covers programmatic selections)
+    // explicitly ensure summary/hidden are synced (covers programmatic select)
     const streamVal = stream.id != null ? stream.id : (stream.text || '');
     const buildVal  = bestBuild.id != null ? bestBuild.id : (bestBuild.text || '');
     $(`#summary-${key}`).val(buildVal);
@@ -444,10 +451,10 @@ $(function () {
       return;
     }
 
-    // process all apps in parallel for speed
+    // parallel per app for speed
     await Promise.all(APPS.map(app => processApp(app, rel, migStream)));
 
-    // S3 suffix: MT/<MMM>
+    // set MT/<MMM> suffix
     $('#migops-lars-input').val(`MT/${mmm}`).trigger('input');
 
     alertUI(`Autofilled SR for <b>${rel}</b>. You can still adjust any field.`, 'success');
@@ -460,7 +467,6 @@ $(function () {
       const $upload = $('#upload-btn');
       const $clear  = $('#clear-selections');
 
-      // loading state
       const originalHtml = $btn.html();
       $btn.prop('disabled', true)
           .attr('aria-busy', 'true')
@@ -474,7 +480,6 @@ $(function () {
         console.error(err);
         alertUI('Autofill failed due to an unexpected error.', 'danger');
       } finally {
-        // restore UI
         $btn.prop('disabled', false).removeAttr('aria-busy').html(originalHtml);
         $upload.prop('disabled', false);
         $clear.prop('disabled', false);
@@ -482,6 +487,7 @@ $(function () {
     });
   });
 })();
+
 
 // Help toggle button label
 $(function () {
