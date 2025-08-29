@@ -719,8 +719,8 @@ def classify_stack(states: List[str]) -> str:
         return "Unknown"
     all_running = all(s == "running" for s in states)
     all_stopped = all(s == "stopped" for s in states)
-    opening = any(s in ("pending", "starting") for s in states)
-    closing = any(s in ("stopping", "shutting-down") for s in states)
+    opening = (any(s == "pending" for s in states) or any(s == "running" for s in states)) and any(s == "stopped" for s in states)
+    closing = any(s == "stopping" for s in states)
     if all_running:
         return "Running"
     if all_stopped:
