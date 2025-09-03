@@ -6,7 +6,7 @@ import csv, io, requests, os, re
 import shlex
 from flask import current_app
 from flaskv2.extensions import cache
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta  # pip install python-dateutil
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -691,25 +691,33 @@ TARGET_META_FILES = {
 
 def get_object_version_meta(bucket: str, root: str, rel_key: str) -> Optional[Dict[str, Any]]:
     """
-    Return {'version': '<value>'} if the object has version set.
-    Only attempts for TARGET_META_FILES; returns None otherwise.
+    Return {"version": <str|None>, "last_modified": <iso8601|None>}.
+    - Always attempts a HEAD on the object to read Last-Modified (for ALL files).
+    - "version" is only populated for files in TARGET_META_FILES (else None).
     rel_key is relative to `root` (e.g., 'MT/AUG/Install-LMMIG.jar').
     """
-    basename = os.path.basename(rel_key)
-    if basename not in TARGET_META_FILES:
-        return None
-
     s3 = boto3.client("s3")
     full_key = f"{root}{rel_key}"
     try:
         resp = s3.head_object(Bucket=bucket, Key=full_key)
     except Exception:
         return None
+    
+    # Last-Modified -> ISO 8601 (UTC, with 'Z')
+    lm = resp.get("LastModified")
+    last_modified = None
 
-    # boto3 lowercases user-metadata keys
+    if lm:
+        try:
+            last_modified = lm.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        except Exception:
+            last_modified = str(lm)
+
+    basename = os.path.basename(rel_key)
     meta = resp.get("Metadata") or {}
-    ver = meta.get("version")
-    return {"version": ver} if ver else None
+    version = meta.get("version") if basename in TARGET_META_FILES else None
+    
+    return {"version": version, "last_modified": last_modified}
 
 # -------- AWS INSTANCES
 

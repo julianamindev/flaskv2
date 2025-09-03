@@ -19,7 +19,7 @@ let injectModal;
 
   // Cache S3 version metadata by relative key (e.g., "MT/AUG/LANDMARK.jar")
   const META_CACHE = new Map();
-
+  const LASTMOD_CACHE = new Map();
   // ----- Files that should show version metadata (x-amz-meta-version) -----
   const NEEDS_META_SET = new Set([
     'Install-LMMIG.jar',
@@ -28,6 +28,17 @@ let injectModal;
     'LANDMARK.jar',
     'grid-installer.jar',
   ]);
+
+  function fmtLastMod(iso) {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch { return '—'; }
+  }
 
   async function loadRunningStacks() {
     const sum = document.getElementById('stacksSummary');
@@ -157,6 +168,7 @@ let injectModal;
         <tr>
           <td class="py-1">${name}</td>
           <td class="py-1"><code class="small">${s3Uri}</code></td>
+          <td class="py-1 lm-cell" data-key="${relKey}">…</td>
           <td class="py-1 meta-cell" data-key="${relKey}">${needs ? "…" : "—"}</td>
           <td class="py-1 text-end">
             <button class="btn btn-sm btn-outline-secondary" data-copy="${s3Uri}">Copy S3 URI</button>
@@ -173,36 +185,70 @@ let injectModal;
               <tr>
                 <th>File</th>
                 <th>S3 URI</th>
+                <th>Last Modified</th>
                 <th>Metadata</th>
                 <th class="text-end">Actions</th>
               </tr>
             </thead>
-            <tbody>${fileRows || `<tr><td colspan="4" class="text-muted">No files</td></tr>`}</tbody>
+            <tbody>${fileRows || `<tr><td colspan="5" class="text-muted">No files</td></tr>`}</tbody>
           </table>
         </div>
       </div>`;
   }
 
-  // ----- Fill "Metadata" cells by calling the API for needed files -----
   function hydrateMetaCellsFor(trElem) {
-    const $child = $(trElem).next('tr'); // DataTables puts child in next TR
-    $child.find('td.meta-cell').each(function () {
-      const td   = this;
-      const key  = td.getAttribute('data-key') || '';
-      if (!key) { td.textContent = '—'; return; }
-      const base = key.split('/').pop();
-      if (!NEEDS_META_SET.has(base)) { td.textContent = '—'; return; }
+    const $child = $(trElem).next('tr'); // DataTables puts child in the next TR
 
-      td.textContent = '…';
+    // Iterate each file row once and fill both cells from the same API call
+    $child.find('tbody tr').each(function () {
+      const tr = this;
+      const tdMeta = tr.querySelector('td.meta-cell');
+      const tdLm   = tr.querySelector('td.lm-cell');
+
+      const key = (tdMeta?.getAttribute('data-key')) || (tdLm?.getAttribute('data-key')) || '';
+      if (!key) return;
+
+      // Apply any cached values immediately
+      if (tdLm) {
+        const cachedLM = LASTMOD_CACHE.get(key);
+        tdLm.textContent = cachedLM !== undefined ? cachedLM : '…';
+      }
+      if (tdMeta) {
+        const cachedVer = META_CACHE.get(key);
+        tdMeta.textContent = cachedVer !== undefined ? cachedVer :
+          (NEEDS_META_SET.has((key.split('/').pop() || '')) ? '…' : '—');
+      }
+
+      // Fetch only if at least one value is missing from cache
+      const needLm   = tdLm   && !LASTMOD_CACHE.has(key);
+      const baseName = key.split('/').pop() || '';
+      const needMeta = tdMeta && NEEDS_META_SET.has(baseName) && !META_CACHE.has(key);
+      if (!needLm && !needMeta) return;
+
       fetch(`/api/s3/object_meta?key=${encodeURIComponent(key)}`)
         .then(r => r.json())
-        .then(({ ok, metadata }) => {
-          const val = (ok && metadata && metadata.version) ? metadata.version : '—';
-          META_CACHE.set(key, val);
-          td.textContent = val;
-        }).catch(() => { td.textContent = '—'; });
+        .then(({ ok, metadata, last_modified }) => {
+          // Version
+          if (tdMeta) {
+            const ver = (ok && metadata && metadata.version) ? metadata.version : '—';
+            META_CACHE.set(key, ver);
+            tdMeta.textContent = ver;
+          }
+          // Last modified (accept either top-level or nested)
+          if (tdLm) {
+            const iso = last_modified || (metadata && metadata.last_modified);
+            const lmText = iso ? fmtLastMod(iso) : '—';
+            LASTMOD_CACHE.set(key, lmText);
+            tdLm.textContent = lmText;
+          }
+        })
+        .catch(() => {
+          if (tdMeta) tdMeta.textContent = '—';
+          if (tdLm)   tdLm.textContent   = '—';
+        });
     });
   }
+
 
   function hydrateModalMeta() {
     document.querySelectorAll('#filesTable td.meta-cell').forEach(td => {
