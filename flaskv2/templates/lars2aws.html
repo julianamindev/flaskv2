@@ -49,7 +49,7 @@
       <ul class="mb-0">
         <li><strong>Autofill SR</strong> works only if MIG’s current-month Service Release exists — i.e., stream <code>REL_YYYY_MM</code> for this month is available. If it isn’t, you’ll see an error and no fields will be autofilled.</li>
         <li>You can upload to LARS root directory by leaving the S3 Destination field empty. However, this is normally reserved for the current month's SR builds.</li>
-        <li><strong>Use MIG stream</strong> auto-generates the destination suffix from the selected (or manually entered) MIG stream:
+        <li><strong>Autogenerate LARS Prefix</strong> auto-generates the destination suffix from the selected (or manually entered) MIG stream:
           <ul class="mb-1">
             <li><code>MAINLINE</code> → <code>MAINLINE</code></li>
             <li><code>HOTFIX_*</code> → <code>HOTFIX/&lt;stream&gt;</code></li>
