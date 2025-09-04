@@ -485,11 +485,15 @@ def api_inject():
     instance_id = (data.get("instance_id") or "").strip()
     key_prefix  = data.get("key_prefix") or ""
     files       = data.get("files") or []
+    preclear    = bool(data.get("preclear", True))
 
     if not instance_id or not isinstance(files, list) or not all(isinstance(x, str) for x in files):
         return jsonify({"ok": False, "error": "invalid payload"}), 400
 
     try:
+        # If preclear=False, pass empty list; else pass None to use defaults
+        preclear_names = [] if not preclear else None
+
         cmd_id = send_inject_command(
             instance_id=instance_id,
             bucket="migops",
@@ -500,7 +504,8 @@ def api_inject():
             dest=TMP_DIR,
             preclear_names=TMP_BUILDS_CLEAR_LIST,
             filtered_listing=True,
-            list_filter_regex=TMP_BUILDS_FILTER_REGEX
+            list_filter_regex=TMP_BUILDS_FILTER_REGEX,
+            preclear_names=preclear_names,
         )
         return jsonify({"ok": True, "job_id": cmd_id, "instance_id": instance_id})
     except Exception as e:

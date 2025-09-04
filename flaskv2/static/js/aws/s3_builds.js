@@ -94,6 +94,7 @@ let injectModal;
     // state
     injectState.selectedFiles.clear();
     injectState.selectedStack = null;
+    injectState.preclearEnabled = true;
 
     // step tables
     document.querySelector('#stacksTable tbody').innerHTML = '';
@@ -102,6 +103,10 @@ let injectModal;
     document.getElementById('filesSummary').textContent = '0 selected';
     const filt = document.getElementById('stackFilter');
     if (filt) filt.value = '';
+
+    const preclearChk = document.getElementById('inj-preclear');
+    if (preclearChk) preclearChk.checked = true;
+    document.getElementById('preclearAlert').classList.remove('d-none');
   }
 
   function showProgressUI() {
@@ -294,7 +299,8 @@ let injectModal;
     keyPrefix: '',       // "" or "MT/AUG/"
     files: [],           // files available under keyPrefix
     selectedStack: null, // {id, name, region}
-    selectedFiles: new Set()
+    selectedFiles: new Set(),
+    preclearEnabled: true
   };
 
   function goStep(n) {
@@ -387,6 +393,10 @@ let injectModal;
     document.getElementById('sum-prefix').textContent = injectState.displayPrefix || '—';
     document.getElementById('sum-count').textContent  = injectState.selectedFiles.size.toString();
     document.getElementById('sum-files').innerHTML    = [...injectState.selectedFiles].map(f => `<code class="d-inline-block me-2 mb-1">${f}</code>`).join('');
+
+    const preclearChk = document.getElementById('inj-preclear');
+    if (preclearChk) preclearChk.checked = !!injectState.preclearEnabled;
+    document.getElementById('preclearAlert').classList.toggle('d-none', !injectState.preclearEnabled);
   }
 
   // ----- DOM ready: build DataTable and wire handlers -----
@@ -548,7 +558,8 @@ let injectModal;
           body: JSON.stringify({
             instance_id: instanceId,
             key_prefix: keyPrefix,
-            files: filesArr
+            files: filesArr,
+            preclear: !!injectState.preclearEnabled
           })
         });
         const data = await resp.json();
@@ -602,5 +613,11 @@ let injectModal;
     injectModalEl.addEventListener('hidden.bs.modal', () => {
       resetInjectModalUI();
     });
+  });
+
+  document.getElementById('inj-preclear').addEventListener('change', (e) => {
+    injectState.preclearEnabled = !!e.target.checked;
+    document.getElementById('preclearAlert')
+      .classList.toggle('d-none', !injectState.preclearEnabled);
   });
 })();

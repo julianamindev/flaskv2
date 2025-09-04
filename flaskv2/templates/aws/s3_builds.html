@@ -111,7 +111,16 @@
             </ul>
             <div class="border rounded p-2 mt-2" style="max-height: 180px; overflow:auto" id="sum-files"><!-- filled by JS --></div>
           </div>
-          <div class="alert alert-warning mb-0">
+
+          <!-- Pre-clear toggle -->
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="inj-preclear" checked>
+            <label class="form-check-label" for="inj-preclear">
+              Pre-clear known files before copying
+            </label>
+          </div>
+
+          <div id="preclearAlert" class="alert alert-warning mb-0">
             Pre-clear will remove if present: <code>Install-LMMIG.jar</code>, <code>Install-LMHCM.jar</code>, <code>Install-LMIEFIN.jar</code>, <code>LANDMARK.jar</code>, <code>grid-installer.jar</code>, <code>mt-dependencies.txt</code>, <code>mt_dependencies.txt</code>.
           </div>
         </div>
