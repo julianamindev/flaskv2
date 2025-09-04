@@ -324,7 +324,7 @@ let injectModal;
     const hint = document.getElementById('inj-hint');
     if (n === 1) hint.textContent = 'Pick the Landmark stack that will receive the files.';
     if (n === 2) hint.textContent = 'Choose which files to copy into /opt/infor/landmark/tmp.';
-    if (n === 3) hint.textContent = 'Review and confirm. We’ll pre-clear conflicting files before copying.';
+    if (n === 3) hint.textContent = 'Review and confirm.';
   }
 
   function renderStacks(list) {
