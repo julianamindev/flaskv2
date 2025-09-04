@@ -492,7 +492,7 @@ def api_inject():
 
     try:
         # If preclear=False, pass empty list; else pass None to use defaults
-        preclear_names = [] if not preclear else None
+        preclear_names = [] if not preclear else TMP_BUILDS_CLEAR_LIST
 
         cmd_id = send_inject_command(
             instance_id=instance_id,
@@ -502,10 +502,9 @@ def api_inject():
             files=files,
             region="us-east-1",
             dest=TMP_DIR,
-            preclear_names=TMP_BUILDS_CLEAR_LIST,
+            preclear_names=preclear_names,
             filtered_listing=True,
             list_filter_regex=TMP_BUILDS_FILTER_REGEX,
-            preclear_names=preclear_names,
         )
         return jsonify({"ok": True, "job_id": cmd_id, "instance_id": instance_id})
     except Exception as e:
