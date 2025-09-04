@@ -490,6 +490,8 @@ def api_inject():
     if not instance_id or not isinstance(files, list) or not all(isinstance(x, str) for x in files):
         return jsonify({"ok": False, "error": "invalid payload"}), 400
 
+    audit("builds_inject", instance_id=instance_id, files=files) # Replace instance_id to stack name (migops###)
+
     try:
         # If preclear=False, pass empty list; else pass None to use defaults
         preclear_names = [] if not preclear else TMP_BUILDS_CLEAR_LIST
