@@ -7,6 +7,7 @@ TMP_BUILDS_CLEAR_LIST = [
     "Install-LMMIG.jar",
     "Install-LMHCM.jar",
     "Install-LMIEFIN.jar",
+    "MIG_scripts.jar",
     "LANDMARK.jar",
     "grid-installer.jar",
     "mt_dependencies.txt",
